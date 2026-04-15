@@ -4,10 +4,28 @@ import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Loader2, Save, Search, X, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+// Wrapper to handle Suspense for useSearchParams
+export default function NewJobPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <main className="max-w-4xl mx-auto py-8 px-4">
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </main>
+      </div>
+    }>
+      <NewJobPageContent />
+    </Suspense>
+  )
+}
 
 const JOB_STATUSES = ["Contact", "Enquiry", "Quoting", "Quoted", "Contracted", "Completed", "Lost"]
 
@@ -158,7 +176,7 @@ function ClientCombobox({
   )
 }
 
-export default function NewJobPage() {
+function NewJobPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const editId = searchParams.get("id")
