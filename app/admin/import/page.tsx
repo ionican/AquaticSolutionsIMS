@@ -17,6 +17,7 @@ interface Column {
 interface TableInfo {
   name: string
   sourceName?: string
+  createTableSQL?: string
   schema: string
   columnCount: number
   rowCount: number
@@ -144,6 +145,7 @@ export default function ImportPage() {
           return {
             name: t.name,
             sourceName: t.sourceName,
+            createTableSQL: t.createTableSQL,
             schema: 'dbo',
             columnCount: t.columns.filter((c: any) => !c.isAuditColumn).length,
             rowCount: t.totalRowCount,
@@ -235,6 +237,7 @@ export default function ImportPage() {
         const newTable: TableMigrationStatus = {
           name: t.name,
           sourceName: t.sourceName,
+          createTableSQL: t.createTableSQL,
           schema: 'dbo',
           columnCount: t.columns.filter((c: any) => !c.isAuditColumn).length,
           rowCount: t.totalRowCount,
@@ -603,8 +606,26 @@ export default function ImportPage() {
 
                           {/* Show error message on collapsed row */}
                           {table.migrationStatus === "error" && table.error && (
-                            <div className="border-t border-destructive/20 bg-destructive/5 px-4 py-2">
+                            <div className="border-t border-destructive/20 bg-destructive/5 px-4 py-3">
                               <p className="text-sm text-destructive">{table.error}</p>
+                              {table.error.includes("does not exist") && table.createTableSQL && (
+                                <div className="mt-2">
+                                  <p className="text-xs text-muted-foreground mb-1">Run this in the Supabase SQL Editor:</p>
+                                  <div className="flex items-start gap-2">
+                                    <pre className="flex-1 rounded bg-muted/50 border border-border px-3 py-2 text-xs font-mono overflow-x-auto whitespace-pre">{table.createTableSQL}</pre>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(table.createTableSQL!)
+                                      }}
+                                      className="shrink-0"
+                                    >
+                                      Copy
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
 
