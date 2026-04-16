@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AZURE_SQL_SERVER": "your-server.database.windows.net",
+    "AZURE_SQL_DATABASE": "your-database",
+    "AZURE_SQL_USER": "your-user",
+    "AZURE_SQL_PASSWORD": "your-password",
+    "API_KEY": "generate-a-strong-random-key-here"
+  }
+}
