@@ -53,13 +53,22 @@ export default function ImportPage() {
   const [addingTable, setAddingTable] = useState<string | null>(null)
   const [availableError, setAvailableError] = useState<string | null>(null)
 
-  const saveTableList = (tableList: TableMigrationStatus[]) => {
+  const saveTableList = async (tableList: TableMigrationStatus[]) => {
     const sourceNames = tableList.map(t => t.sourceName || t.name)
-    fetch("/api/migration/table-list", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tables: sourceNames })
-    }).catch(() => { /* best effort */ })
+    console.log("[migration] Saving table list:", sourceNames)
+    try {
+      const res = await fetch("/api/migration/table-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tables: sourceNames })
+      })
+      const data = await res.json()
+      if (!data.success) {
+        console.error("[migration] Failed to save table list:", data.error)
+      }
+    } catch (error) {
+      console.error("[migration] Error saving table list:", error)
+    }
   }
 
   const checkConnection = async () => {

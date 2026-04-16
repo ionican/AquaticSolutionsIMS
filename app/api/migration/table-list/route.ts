@@ -13,13 +13,24 @@ const DEFAULT_TABLES = [
   'parameters'
 ]
 
+async function getNextId(supabase: ReturnType<typeof getSupabase>): Promise<number> {
+  const { data } = await supabase
+    .from("parameters")
+    .select("id")
+    .order("id", { ascending: false })
+    .limit(1)
+    .single()
+
+  return (data?.id || 0) + 1
+}
+
 export async function GET() {
   try {
     const supabase = getSupabase()
 
     const { data, error } = await supabase
       .from("parameters")
-      .select("value")
+      .select("id, value")
       .eq("parameter", PARAM_NAME)
       .eq("company_id", COMPANY_ID)
       .single()
@@ -27,9 +38,14 @@ export async function GET() {
     if (error || !data) {
       // Seed the default list
       const defaultValue = DEFAULT_TABLES.join(",")
-      await supabase
+      const nextId = await getNextId(supabase)
+      const { error: insertError } = await supabase
         .from("parameters")
-        .insert({ parameter: PARAM_NAME, value: defaultValue, company_id: COMPANY_ID })
+        .insert({ id: nextId, parameter: PARAM_NAME, value: defaultValue, company_id: COMPANY_ID })
+
+      if (insertError) {
+        console.error("[v0] Error seeding migration table list:", insertError)
+      }
 
       return Response.json({ success: true, tables: DEFAULT_TABLES })
     }
@@ -76,10 +92,11 @@ export async function POST(request: Request) {
 
       if (error) throw error
     } else {
-      // Insert new row
+      // Insert new row with next available id
+      const nextId = await getNextId(supabase)
       const { error } = await supabase
         .from("parameters")
-        .insert({ parameter: PARAM_NAME, value, company_id: COMPANY_ID })
+        .insert({ id: nextId, parameter: PARAM_NAME, value, company_id: COMPANY_ID })
 
       if (error) throw error
     }
