@@ -1,6 +1,10 @@
 import { getSupabase } from "@/lib/supabase"
+import { requirePermission, isUser } from "@/lib/auth"
 
 export async function GET(request: Request) {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     const supabase = getSupabase()
     const { searchParams } = new URL(request.url)
@@ -26,6 +30,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     const supabase = getSupabase()
     const { tableName, columns } = await request.json()

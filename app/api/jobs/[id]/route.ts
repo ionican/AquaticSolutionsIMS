@@ -1,10 +1,15 @@
 import { getSupabase } from "@/lib/supabase"
 import { NextRequest } from "next/server"
+import { requirePermission, isUser } from "@/lib/auth"
+import { auditLog } from "@/lib/audit"
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requirePermission("jobs:read")
+  if (!isUser(auth)) return auth
+
   const { id } = await params
   const jobId = parseInt(id)
 
@@ -44,6 +49,8 @@ export async function GET(
     console.error("Events fetch error:", eventsError)
   }
 
+  await auditLog(auth, "read", "jobs", { job_id: jobId })
+
   return Response.json({
     job: {
       ...job,
@@ -60,6 +67,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requirePermission("jobs:write")
+  if (!isUser(auth)) return auth
+
   const { id } = await params
   const jobId = parseInt(id)
 
@@ -90,6 +100,8 @@ export async function PATCH(
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
   }
+
+  await auditLog(auth, "update", "jobs", { job_id: jobId, fields: Object.keys(updateData) })
 
   return Response.json({ job: data })
 }

@@ -1,4 +1,6 @@
 import { azureSqlQuery } from "@/lib/azure-sql"
+import { requirePermission, isUser } from "@/lib/auth"
+import { auditLog } from "@/lib/audit"
 
 // Default tables to migrate from the legacy system
 const DEFAULT_MIGRATION_TABLES = [
@@ -127,7 +129,6 @@ async function fetchTablesSchema(tableNames: string[]) {
     const columnDefs = nonAuditColumns.map((col: any) => {
       let def = `  "${col.name.toLowerCase()}" ${col.postgresType}`
       if (col.isIdentity) def = `  "${col.name.toLowerCase()}" SERIAL`
-      // Only enforce NOT NULL on primary key — source data may have NULLs after filtering
       return def
     })
 
@@ -151,8 +152,12 @@ async function fetchTablesSchema(tableNames: string[]) {
 }
 
 export async function GET() {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     const tables = await fetchTablesSchema(DEFAULT_MIGRATION_TABLES)
+    await auditLog(auth, "fetch_schema", "migration", { tables: DEFAULT_MIGRATION_TABLES })
     return Response.json({ success: true, tables })
   } catch (error) {
     console.error('[v0] Schema fetch error:', error)
@@ -164,12 +169,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     const { tables: tableNames } = await request.json()
     if (!Array.isArray(tableNames) || tableNames.length === 0) {
       return Response.json({ success: false, error: 'tables array is required' }, { status: 400 })
     }
     const tables = await fetchTablesSchema(tableNames)
+    await auditLog(auth, "fetch_schema", "migration", { tables: tableNames })
     return Response.json({ success: true, tables })
   } catch (error) {
     console.error('[v0] Schema fetch error:', error)

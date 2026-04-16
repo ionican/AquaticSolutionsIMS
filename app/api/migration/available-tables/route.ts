@@ -1,6 +1,10 @@
 import { azureSqlQuery } from "@/lib/azure-sql"
+import { requirePermission, isUser } from "@/lib/auth"
 
 export async function GET() {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     const result = await azureSqlQuery(`
       SELECT

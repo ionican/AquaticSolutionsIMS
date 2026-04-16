@@ -1,7 +1,16 @@
 import { getSupabase } from "@/lib/supabase"
 import { NextRequest } from "next/server"
+import { requirePermission, isUser } from "@/lib/auth"
+import { auditLog } from "@/lib/audit"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission("jobs:write")
+  if (!isUser(auth)) return auth
+
+  const rateErr = checkRateLimit(auth.id, "POST", "/api/jobs/create", 10, 60)
+  if (rateErr) return rateErr
+
   try {
     const supabase = getSupabase()
     const body = await req.json()
@@ -46,6 +55,8 @@ export async function POST(req: NextRequest) {
       console.error("[v0] Error creating job:", error)
       return Response.json({ error: error.message }, { status: 500 })
     }
+
+    await auditLog(auth, "create", "jobs", { job_id: data.id, enquiry_id: nextEnquiryId })
 
     return Response.json({ success: true, job: data })
   } catch (error) {

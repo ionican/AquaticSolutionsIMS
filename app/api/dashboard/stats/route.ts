@@ -1,6 +1,10 @@
 import { getSupabase } from "@/lib/supabase"
+import { requireAuth, isUser } from "@/lib/auth"
 
 export async function GET() {
+  const auth = await requireAuth()
+  if (!isUser(auth)) return auth
+
   try {
     const supabase = getSupabase()
     // Count active jobs (excluding Completed and Lost)

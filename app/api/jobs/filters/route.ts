@@ -1,6 +1,10 @@
 import { getSupabase } from "@/lib/supabase"
+import { requirePermission, isUser } from "@/lib/auth"
 
 export async function GET() {
+  const auth = await requirePermission("jobs:read")
+  if (!isUser(auth)) return auth
+
   const supabase = getSupabase()
   const [statusRes, jobTypesRes, jobClassesRes] = await Promise.all([
     supabase.from("jobs").select("status").not("status", "is", null).order("status"),

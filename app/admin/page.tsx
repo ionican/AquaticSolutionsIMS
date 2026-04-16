@@ -3,6 +3,11 @@ import Link from "next/link"
 
 const adminOptions = [
   {
+    title: "Manage Users",
+    description: "Add, edit, or remove users and assign roles",
+    href: "/admin/users",
+  },
+  {
     title: "Import Data",
     description: "Migrate data from Azure SQL Server to Supabase",
     href: "/admin/import",

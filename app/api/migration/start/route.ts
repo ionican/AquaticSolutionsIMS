@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { azureSqlQuery } from "@/lib/azure-sql"
+import { requirePermission, isUser } from "@/lib/auth"
+import { auditLog } from "@/lib/audit"
 
 interface TableConfig {
   name: string
@@ -9,6 +11,9 @@ interface TableConfig {
 }
 
 export async function POST(request: Request) {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -35,6 +40,9 @@ export async function POST(request: Request) {
       }
 
       try {
+        await auditLog(auth, "start_migration", "migration", {
+          tables: body.tables.map((t: TableConfig) => t.name),
+        })
         send({ type: "status", status: "connecting" })
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)

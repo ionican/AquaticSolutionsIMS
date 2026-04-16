@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { checkConnection, isProxyConfigured } from "@/lib/azure-sql"
+import { requirePermission, isUser } from "@/lib/auth"
 
 export async function GET() {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   const hasProxy = isProxyConfigured()
   const hasDirect = !!(
     process.env.AZURE_SQL_SERVER &&

@@ -1,21 +1,27 @@
 import { getSupabase } from "@/lib/supabase"
 import { NextRequest } from "next/server"
+import { requirePermission, isUser } from "@/lib/auth"
+import { auditLog } from "@/lib/audit"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { parsePagination } from "@/lib/pagination"
 
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission("jobs:read")
+  if (!isUser(auth)) return auth
+
+  const rateErr = checkRateLimit(auth.id, "GET", "/api/jobs", 20, 60)
+  if (rateErr) return rateErr
+
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
 
-  const page = parseInt(searchParams.get("page") || "1")
-  const pageSize = parseInt(searchParams.get("pageSize") || "50")
+  const { page, pageSize, from, to } = parsePagination(searchParams)
   const sortBy = searchParams.get("sortBy") || "id"
   const sortDir = searchParams.get("sortDir") || "desc"
   const search = searchParams.get("search") || ""
   const status = searchParams.get("status") || ""
   const jobType = searchParams.get("jobType") || ""
   const jobClass = searchParams.get("jobClass") || ""
-
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
 
   // Fetch jobs without joins (no FK constraints defined)
   let query = supabase
@@ -71,6 +77,8 @@ export async function GET(req: NextRequest) {
     job_types: typeMap[job.job_type_id] ?? null,
     job_classes: classMap[job.job_class_id] ?? null,
   }))
+
+  await auditLog(auth, "list", "jobs", { page, pageSize, search, filters: { status, jobType, jobClass } })
 
   return Response.json({ data, count, page, pageSize })
 }

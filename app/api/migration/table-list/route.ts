@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase"
+import { requirePermission, isUser } from "@/lib/auth"
 
 const PARAM_NAME = "migration_tables"
 const COMPANY_ID = 6
@@ -25,6 +26,9 @@ async function getNextId(supabase: ReturnType<typeof getSupabase>): Promise<numb
 }
 
 export async function GET() {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     const supabase = getSupabase()
 
@@ -65,6 +69,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     const { tables } = await request.json()
 

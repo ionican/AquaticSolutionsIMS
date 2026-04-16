@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { azureSqlQuery } from "@/lib/azure-sql"
+import { requirePermission, isUser } from "@/lib/auth"
 
 // Map of source table names to target table names in Supabase
 const TABLE_NAME_MAP: Record<string, string> = {
@@ -10,6 +11,9 @@ const TABLE_NAME_MAP: Record<string, string> = {
 }
 
 export async function GET() {
+  const auth = await requirePermission("migration:run")
+  if (!isUser(auth)) return auth
+
   try {
     // Get tables from Azure SQL
     const tablesResult = await azureSqlQuery(`

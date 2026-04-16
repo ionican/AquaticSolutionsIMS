@@ -1,4 +1,6 @@
 import { getSupabase } from "@/lib/supabase"
+import { requirePermission, isUser } from "@/lib/auth"
+import { auditLog } from "@/lib/audit"
 
 // Map of Azure SQL source names to Supabase target names
 const TABLE_NAME_MAP: Record<string, string> = {
@@ -9,6 +11,9 @@ const TABLE_NAME_MAP: Record<string, string> = {
 }
 
 export async function GET() {
+  const auth = await requirePermission("database:browse")
+  if (!isUser(auth)) return auth
+
   try {
     const supabase = getSupabase()
 
@@ -50,6 +55,8 @@ export async function GET() {
         })
       }
     }
+
+    await auditLog(auth, "browse", "database", { tables: tables.map(t => t.name) })
 
     return Response.json({
       success: true,
