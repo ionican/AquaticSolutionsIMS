@@ -164,7 +164,7 @@ export default function ImportPage() {
       )
 
       setTables(tablesWithConfig)
-      saveTableList(tablesWithConfig)
+      await saveTableList(tablesWithConfig)
       setStatus("ready")
     } catch (error) {
       setStatus("error")
@@ -248,11 +248,8 @@ export default function ImportPage() {
           })),
           migrationStatus: "pending"
         }
-        setTables(prev => {
-          const updated = [...prev, newTable]
-          saveTableList(updated)
-          return updated
-        })
+        setTables(prev => [...prev, newTable])
+        await saveTableList([...tables, newTable])
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to add table")
@@ -261,12 +258,10 @@ export default function ImportPage() {
     setShowAddTable(false)
   }
 
-  const removeTable = (tableName: string) => {
-    setTables(prev => {
-      const updated = prev.filter(t => t.name !== tableName)
-      saveTableList(updated)
-      return updated
-    })
+  const removeTable = async (tableName: string) => {
+    const updated = tables.filter(t => t.name !== tableName)
+    setTables(updated)
+    await saveTableList(updated)
   }
 
   const saveColumnConfig = async (tableName: string) => {
