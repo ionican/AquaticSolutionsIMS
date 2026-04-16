@@ -306,6 +306,7 @@ export default function ImportPage() {
           tables: tables.map(t => ({
             name: t.name,
             sourceName: t.sourceName || t.name,
+            createTableSQL: t.createTableSQL,
             selectedColumns: t.columns.filter(c => c.selected).map(c => c.name)
           }))
         })
