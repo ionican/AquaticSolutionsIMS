@@ -56,7 +56,42 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: error.message }, { status: 500 })
     }
 
-    await auditLog(auth, "create", "jobs", { job_id: data.id, enquiry_id: nextEnquiryId })
+    // Create jobcontacts entries if provided
+    if (body.jobContacts && Array.isArray(body.jobContacts) && body.jobContacts.length > 0) {
+      // Get the next jobcontacts id
+      const { data: maxJc } = await supabase
+        .from("jobcontacts")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(1)
+        .single()
+
+      let nextJcId = (maxJc?.id || 0) + 1
+
+      const jcRows = body.jobContacts.map((jc: { contact_id: number; title: string; jobsheet?: boolean; invoice?: boolean }) => ({
+        id: nextJcId++,
+        enquiry_id: nextEnquiryId,
+        contact_id: jc.contact_id,
+        title: jc.title || "Client Contact",
+        jobsheet: jc.jobsheet ?? true,
+        invoice: jc.invoice ?? null,
+        company_id: null,
+      }))
+
+      const { error: jcError } = await supabase
+        .from("jobcontacts")
+        .insert(jcRows)
+
+      if (jcError) {
+        console.error("[v0] Error creating jobcontacts:", jcError)
+      }
+    }
+
+    await auditLog(auth, "create", "jobs", {
+      job_id: data.id,
+      enquiry_id: nextEnquiryId,
+      contacts_count: body.jobContacts?.length ?? 0,
+    })
 
     return Response.json({ success: true, job: data })
   } catch (error) {

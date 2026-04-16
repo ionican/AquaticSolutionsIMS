@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, Save, Search, X, ChevronDown } from "lucide-react"
+import { ArrowLeft, Loader2, Save, Search, X, ChevronDown, Plus, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Wrapper to handle Suspense for useSearchParams
@@ -40,6 +40,14 @@ interface Contact {
   fname: string
   sname: string
   client_id: number
+}
+
+interface JobContactRow {
+  key: string
+  contact_id: string
+  title: string
+  jobsheet: boolean
+  invoice: boolean
 }
 
 interface JobType {
@@ -191,7 +199,7 @@ function NewJobPageContent() {
   const [sitePcode, setSitePcode] = useState("")
   const [status, setStatus] = useState("Contact")
   const [clientId, setClientId] = useState("")
-  const [contactId, setContactId] = useState("")
+  const [jobContacts, setJobContacts] = useState<JobContactRow[]>([])
   const [jobTypeId, setJobTypeId] = useState("")
   const [jobClassId, setJobClassId] = useState("")
   const [nature, setNature] = useState("")
@@ -203,7 +211,6 @@ function NewJobPageContent() {
   // Lookup data
   const [clients, setClients] = useState<Client[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
-  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([])
   const [jobTypes, setJobTypes] = useState<JobType[]>([])
   const [jobClasses, setJobClasses] = useState<JobClass[]>([])
   const [loadingLookups, setLoadingLookups] = useState(true)
@@ -229,7 +236,7 @@ function NewJobPageContent() {
 
       // Pre-fill form if editing existing job
       if (isEditing && jobRes) {
-        const jr = jobRes as { job: Record<string, unknown> }
+        const jr = jobRes as { job: Record<string, unknown>; jobContacts?: Array<{ contact_id: number; title: string; jobsheet: boolean | null; invoice: boolean | null }> }
         const j = jr.job
         if (j) {
           setProjectName((j.project_name as string) || "")
@@ -237,7 +244,6 @@ function NewJobPageContent() {
           setSitePcode((j.site_pcode as string) || "")
           setStatus((j.status as string) || "Contact")
           setClientId(j.client_id ? String(j.client_id) : "")
-          setContactId(j.contact_id ? String(j.contact_id) : "")
           setJobTypeId(j.job_type_id ? String(j.job_type_id) : "")
           setJobClassId(j.job_class_id ? String(j.job_class_id) : "")
           setNature((j.nature as string) || "")
@@ -245,21 +251,46 @@ function NewJobPageContent() {
           if (j.enquiry_date) setEnquiryDate((j.enquiry_date as string).split("T")[0])
           setQuotationValue(j.quotation_value ? String(j.quotation_value) : "")
           setNotes((j.notes as string) || "")
+
+          if (jr.jobContacts && jr.jobContacts.length > 0) {
+            setJobContacts(jr.jobContacts.map(jc => ({
+              key: crypto.randomUUID(),
+              contact_id: String(jc.contact_id),
+              title: jc.title || "Client Contact",
+              jobsheet: jc.jobsheet ?? true,
+              invoice: jc.invoice ?? false,
+            })))
+          }
         }
       }
       setLoadingLookups(false)
     }).catch(() => setLoadingLookups(false))
   }, [editId, isEditing])
 
-  // Filter contacts when client changes
-  useEffect(() => {
-    if (clientId) {
-      setFilteredContacts(contacts.filter(c => c.client_id === parseInt(clientId)))
-    } else {
-      setFilteredContacts(contacts)
-    }
-    setContactId("")
-  }, [clientId, contacts])
+  // Filter contacts based on selected client
+  const filteredContacts = clientId
+    ? contacts.filter(c => c.client_id === parseInt(clientId))
+    : contacts
+
+  function addJobContact() {
+    setJobContacts(prev => [...prev, {
+      key: crypto.randomUUID(),
+      contact_id: "",
+      title: "Client Contact",
+      jobsheet: true,
+      invoice: false,
+    }])
+  }
+
+  function removeJobContact(key: string) {
+    setJobContacts(prev => prev.filter(jc => jc.key !== key))
+  }
+
+  function updateJobContact(key: string, field: keyof JobContactRow, value: string | boolean) {
+    setJobContacts(prev => prev.map(jc =>
+      jc.key === key ? { ...jc, [field]: value } : jc
+    ))
+  }
 
   // Validation
   const canSave = clientId && projectName.trim()
@@ -286,7 +317,7 @@ function NewJobPageContent() {
       site_pcode: sitePcode,
       status,
       client_id: clientId || null,
-      contact_id: contactId || null,
+      contact_id: null,
       job_type_id: jobTypeId || null,
       job_class_id: jobClassId || null,
       nature,
@@ -294,6 +325,14 @@ function NewJobPageContent() {
       enquiry_date: enquiryDate,
       quotation_value: quotationValue || null,
       notes,
+      jobContacts: jobContacts
+        .filter(jc => jc.contact_id)
+        .map(jc => ({
+          contact_id: parseInt(jc.contact_id),
+          title: jc.title,
+          jobsheet: jc.jobsheet,
+          invoice: jc.invoice,
+        })),
     }
 
     try {
@@ -406,46 +445,115 @@ function NewJobPageContent() {
               </div>
             </div>
 
-            {/* Client & Contact */}
+            {/* Client & Contacts */}
             <div className="rounded-lg border border-border bg-card p-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Client & Contact</h2>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                    Client <span className="text-red-500">*</span> <span className="text-muted-foreground/60">({clients.length} available)</span>
-                  </label>
-                  <ClientCombobox
-                    clients={clients}
-                    value={clientId}
-                    onChange={setClientId}
-                    hasError={!clientId}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                    Contact {clientId
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Client & Contacts</h2>
+
+              {/* Client selector */}
+              <div className="mb-4">
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                  Client <span className="text-red-500">*</span> <span className="text-muted-foreground/60">({clients.length} available)</span>
+                </label>
+                <ClientCombobox
+                  clients={clients}
+                  value={clientId}
+                  onChange={setClientId}
+                  hasError={!clientId}
+                />
+              </div>
+
+              {/* Multi-contact section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-muted-foreground">
+                    Contacts {clientId
                       ? <span className="text-muted-foreground/60">({filteredContacts.length} available)</span>
                       : <span className="text-muted-foreground/40 italic">— select a client first</span>
                     }
                   </label>
-                  <Select
-                    value={contactId || "none"}
-                    onValueChange={v => setContactId(v === "none" ? "" : v)}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addJobContact}
                     disabled={!clientId}
+                    className="h-7 text-xs"
                   >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">-- No contact --</SelectItem>
-                      {filteredContacts.map(c => (
-                        <SelectItem key={c.contact_id} value={String(c.contact_id)}>
-                          {`${c.fname || ""} ${c.sname || ""}`.trim() || "Unnamed"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Contact
+                  </Button>
                 </div>
+
+                {jobContacts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    No contacts added.{clientId ? " Click 'Add Contact' to associate contacts with this job." : ""}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {jobContacts.map(jc => (
+                      <div key={jc.key} className="flex items-center gap-2 rounded-md border border-border bg-background p-2">
+                        {/* Contact picker */}
+                        <div className="flex-1 min-w-0">
+                          <Select
+                            value={jc.contact_id || "none"}
+                            onValueChange={v => updateJobContact(jc.key, "contact_id", v === "none" ? "" : v)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select contact" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">-- Select contact --</SelectItem>
+                              {filteredContacts.map(c => (
+                                <SelectItem key={c.contact_id} value={String(c.contact_id)}>
+                                  {`${c.fname || ""} ${c.sname || ""}`.trim() || "Unnamed"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Title / role */}
+                        <Input
+                          value={jc.title}
+                          onChange={e => updateJobContact(jc.key, "title", e.target.value)}
+                          placeholder="Title"
+                          className="h-8 w-36 text-xs"
+                        />
+
+                        {/* Jobsheet toggle */}
+                        <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={jc.jobsheet}
+                            onChange={e => updateJobContact(jc.key, "jobsheet", e.target.checked)}
+                            className="rounded border-border"
+                          />
+                          Sheet
+                        </label>
+
+                        {/* Invoice toggle */}
+                        <label className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={jc.invoice}
+                            onChange={e => updateJobContact(jc.key, "invoice", e.target.checked)}
+                            className="rounded border-border"
+                          />
+                          Invoice
+                        </label>
+
+                        {/* Remove */}
+                        <button
+                          type="button"
+                          onClick={() => removeJobContact(jc.key)}
+                          className="rounded p-1 text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

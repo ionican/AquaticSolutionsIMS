@@ -44,6 +44,17 @@ interface Job {
     pcode: string
     web_site: string
   } | null
+  job_type: { job_type_id: number; job_type: string } | null
+  job_class: { job_class_id: number; job_class: string } | null
+}
+
+interface JobContact {
+  id: number
+  enquiry_id: number
+  contact_id: number
+  title: string
+  invoice: boolean | null
+  jobsheet: boolean | null
   contact: {
     contact_id: number
     fname: string
@@ -53,8 +64,6 @@ interface Job {
     email: string
     title: string
   } | null
-  job_type: { job_type_id: number; job_type: string } | null
-  job_class: { job_class_id: number; job_class: string } | null
 }
 
 interface Event {
@@ -107,6 +116,7 @@ export default function JobDetailPage() {
   const params = useParams()
   const router = useRouter()
   const [job, setJob] = useState<Job | null>(null)
+  const [jobContacts, setJobContacts] = useState<JobContact[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -118,6 +128,7 @@ export default function JobDetailPage() {
         if (!res.ok) throw new Error("Job not found")
         const data = await res.json()
         setJob(data.job)
+        setJobContacts(data.jobContacts || [])
         setEvents(data.events)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load job")
@@ -263,35 +274,60 @@ export default function JobDetailPage() {
               )}
             </div>
 
-            {/* Contact Card */}
+            {/* Contacts Card */}
             <div className="rounded-lg border border-border bg-card p-4">
               <h2 className="text-sm font-semibold text-card-foreground mb-3 flex items-center gap-2">
-                <User className="h-4 w-4" /> Contact
+                <User className="h-4 w-4" /> Contacts ({jobContacts.length})
               </h2>
-              {job.contact ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">
-                    {[job.contact.title, job.contact.fname, job.contact.sname].filter(Boolean).join(" ")}
-                  </p>
-                  {job.contact.tel && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {job.contact.tel}
-                    </p>
-                  )}
-                  {job.contact.mobile && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {job.contact.mobile}
-                    </p>
-                  )}
-                  {job.contact.email && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Mail className="h-3 w-3" />
-                      <a href={`mailto:${job.contact.email}`} className="text-primary hover:underline">{job.contact.email}</a>
-                    </p>
-                  )}
+              {jobContacts.length > 0 ? (
+                <div className="space-y-3">
+                  {jobContacts.map((jc) => (
+                    <div key={jc.id} className="border-b border-border last:border-0 pb-3 last:pb-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {jc.title}
+                        </span>
+                        {jc.jobsheet && (
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                            Jobsheet
+                          </span>
+                        )}
+                        {jc.invoice && (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                            Invoice
+                          </span>
+                        )}
+                      </div>
+                      {jc.contact ? (
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-foreground">
+                            {[jc.contact.title, jc.contact.fname, jc.contact.sname].filter(Boolean).join(" ")}
+                          </p>
+                          {jc.contact.tel && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Phone className="h-3 w-3" /> {jc.contact.tel}
+                            </p>
+                          )}
+                          {jc.contact.mobile && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Phone className="h-3 w-3" /> {jc.contact.mobile}
+                            </p>
+                          )}
+                          {jc.contact.email && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Mail className="h-3 w-3" />
+                              <a href={`mailto:${jc.contact.email}`} className="text-primary hover:underline">{jc.contact.email}</a>
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Contact #{jc.contact_id} not found</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No contact assigned</p>
+                <p className="text-sm text-muted-foreground">No contacts assigned</p>
               )}
             </div>
           </div>
