@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 interface TableConfig {
   name: string
   sourceName?: string
+  createTableSQL?: string
   selectedColumns: string[]
 }
 
@@ -68,11 +69,12 @@ export async function POST(request: Request) {
           sourceName: t.sourceName || t.name,
           targetName: t.name,
           selectedColumns: t.selectedColumns,
+          createTableSQL: t.createTableSQL,
         }))
 
         send({ type: "status", status: "migrating" })
 
-        for (const { sourceName: tableName, targetName: targetTableName, selectedColumns: requestedColumns } of tablesToMigrate) {
+        for (const { sourceName: tableName, targetName: targetTableName, selectedColumns: requestedColumns, createTableSQL } of tablesToMigrate) {
           send({ type: "table", table: targetTableName, status: "migrating" })
 
           try {
@@ -109,13 +111,35 @@ export async function POST(request: Request) {
               .select('*', { count: 'exact', head: true })
 
             if (probeError) {
-              send({
-                type: "table",
-                table: targetTableName,
-                status: "error",
-                error: `Table "${postgresTableName}" does not exist in Supabase. Create it in the Supabase SQL Editor first.`
-              })
-              continue
+              // Table doesn't exist — try to auto-create it
+              const dbUrl = process.env.SUPABASE_DB_URL
+              if (!dbUrl || !createTableSQL) {
+                send({
+                  type: "table",
+                  table: targetTableName,
+                  status: "error",
+                  error: `Table "${postgresTableName}" does not exist in Supabase. ${!dbUrl ? 'Set SUPABASE_DB_URL env var to enable auto-creation.' : 'No CREATE TABLE SQL available.'}`
+                })
+                continue
+              }
+
+              try {
+                send({ type: "table", table: targetTableName, status: "migrating", message: "Creating table..." })
+                const { Client } = await import("pg")
+                const pgClient = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
+                await pgClient.connect()
+                await pgClient.query(createTableSQL)
+                await pgClient.end()
+                console.log(`[v0] Auto-created table "${postgresTableName}" in Supabase`)
+              } catch (createError: any) {
+                send({
+                  type: "table",
+                  table: targetTableName,
+                  status: "error",
+                  error: `Failed to create table "${postgresTableName}": ${createError?.message || createError}`
+                })
+                continue
+              }
             }
 
             // Map known tables to their primary key columns
