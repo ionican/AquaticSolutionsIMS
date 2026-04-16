@@ -115,10 +115,8 @@ export async function POST(request: Request) {
             }
 
             // Tables are pre-created via Supabase migrations, so we just clear and insert data
-            // First, clear existing data from the target table
             const postgresTableName = targetTableName.toLowerCase()
-            console.log(`[v0] Clearing existing data from ${postgresTableName}`)
-            
+
             // Map tables to their primary key columns
             const primaryKeyMap: Record<string, string> = {
               'jobs': 'id',
@@ -129,17 +127,25 @@ export async function POST(request: Request) {
               'job_classes': 'job_class_id',
               'parameters': 'id',
             }
-            
+
             const pkColumn = primaryKeyMap[postgresTableName] || 'id'
-            
-            // Delete all rows using the correct primary key column
-            const { error: deleteError } = await supabase
-              .from(postgresTableName)
-              .delete()
-              .gte(pkColumn, 0)
-            
-            if (deleteError) {
-              console.log(`[v0] Delete error (may be empty table):`, deleteError.message)
+
+            // For parameters table, use upsert to preserve app-created rows
+            // For all other tables, clear and re-insert
+            const useUpsert = postgresTableName === 'parameters'
+
+            if (!useUpsert) {
+              console.log(`[v0] Clearing existing data from ${postgresTableName}`)
+              const { error: deleteError } = await supabase
+                .from(postgresTableName)
+                .delete()
+                .gte(pkColumn, 0)
+
+              if (deleteError) {
+                console.log(`[v0] Delete error (may be empty table):`, deleteError.message)
+              }
+            } else {
+              console.log(`[v0] Using upsert for ${postgresTableName} to preserve app-created rows`)
             }
 
             // Check if table has audit trail columns (Superceded)
@@ -204,14 +210,26 @@ export async function POST(request: Request) {
               const batchSize = 100
               for (let i = 0; i < uniqueRows.length; i += batchSize) {
                 const batch = uniqueRows.slice(i, i + batchSize)
-                
-                const { error: insertError } = await supabase
-                  .from(postgresTableName)
-                  .insert(batch)
 
-                if (insertError) {
-                  console.error(`[v0] Insert error for ${tableName}:`, insertError)
-                  throw insertError
+                if (useUpsert) {
+                  // Upsert: insert or update on primary key conflict
+                  const { error: upsertError } = await supabase
+                    .from(postgresTableName)
+                    .upsert(batch, { onConflict: pkColumn })
+
+                  if (upsertError) {
+                    console.error(`[v0] Upsert error for ${tableName}:`, upsertError)
+                    throw upsertError
+                  }
+                } else {
+                  const { error: insertError } = await supabase
+                    .from(postgresTableName)
+                    .insert(batch)
+
+                  if (insertError) {
+                    console.error(`[v0] Insert error for ${tableName}:`, insertError)
+                    throw insertError
+                  }
                 }
               }
             }
