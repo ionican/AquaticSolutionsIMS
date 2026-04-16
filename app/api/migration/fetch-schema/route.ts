@@ -127,7 +127,7 @@ async function fetchTablesSchema(tableNames: string[]) {
     const columnDefs = nonAuditColumns.map((col: any) => {
       let def = `  "${col.name.toLowerCase()}" ${col.postgresType}`
       if (col.isIdentity) def = `  "${col.name.toLowerCase()}" SERIAL`
-      if (!col.isNullable && !col.isIdentity) def += ' NOT NULL'
+      // Only enforce NOT NULL on primary key — source data may have NULLs after filtering
       return def
     })
 
