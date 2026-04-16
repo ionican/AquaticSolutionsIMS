@@ -51,6 +51,7 @@ export default function ImportPage() {
   const [availableTables, setAvailableTables] = useState<AvailableTable[]>([])
   const [loadingAvailable, setLoadingAvailable] = useState(false)
   const [addingTable, setAddingTable] = useState<string | null>(null)
+  const [availableError, setAvailableError] = useState<string | null>(null)
 
   const checkConnection = async () => {
     setConnectionConfigured(null)
@@ -159,14 +160,17 @@ export default function ImportPage() {
 
   const fetchAvailableTables = async () => {
     setLoadingAvailable(true)
+    setAvailableError(null)
     try {
       const response = await fetch("/api/migration/available-tables")
       const data = await response.json()
       if (data.success) {
         setAvailableTables(data.tables)
+      } else {
+        setAvailableError(data.error || "Failed to fetch tables")
       }
-    } catch {
-      // Ignore errors
+    } catch (error) {
+      setAvailableError(error instanceof Error ? error.message : "Failed to connect")
     }
     setLoadingAvailable(false)
   }
@@ -461,11 +465,22 @@ export default function ImportPage() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                           Loading available tables...
                         </div>
-                      ) : (
-                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                          {availableTables
-                            .filter(at => !tables.some(t => (t.sourceName || t.name) === at.name))
-                            .map(at => (
+                      ) : availableError ? (
+                        <div className="flex items-center gap-2 text-sm text-destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <span>{availableError}</span>
+                        </div>
+                      ) : (() => {
+                        const remaining = availableTables.filter(at => !tables.some(t => (t.sourceName || t.name) === at.name))
+                        return remaining.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            {availableTables.length === 0
+                              ? "No tables found in the Azure SQL database."
+                              : "All available tables are already added."}
+                          </p>
+                        ) : (
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {remaining.map(at => (
                               <button
                                 key={at.name}
                                 onClick={() => addTable(at.name)}
@@ -481,11 +496,9 @@ export default function ImportPage() {
                                 <span className="text-xs text-muted-foreground ml-auto">{at.columnCount} cols</span>
                               </button>
                             ))}
-                          {availableTables.filter(at => !tables.some(t => (t.sourceName || t.name) === at.name)).length === 0 && (
-                            <p className="text-sm text-muted-foreground col-span-full">All available tables are already added.</p>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
 
