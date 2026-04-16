@@ -166,7 +166,7 @@ export default function DatabaseOverviewPage() {
                     {orderedColumns.map((col) => (
                       <div
                         key={col}
-                        className="flex-shrink-0 w-40 px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-r border-border last:border-r-0"
+                        className="flex-shrink-0 min-w-[120px] max-w-[400px] px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-r border-border last:border-r-0"
                       >
                         {col}
                       </div>
@@ -217,7 +217,7 @@ export default function DatabaseOverviewPage() {
                             return (
                               <div
                                 key={col}
-                                className="flex-shrink-0 w-40 px-4 py-2 text-sm text-foreground truncate border-r border-border last:border-r-0"
+                                className="flex-shrink-0 min-w-[120px] max-w-[400px] px-4 py-2 text-sm text-foreground break-words border-r border-border last:border-r-0"
                                 title={displayValue}
                               >
                                 {displayValue || <span className="text-muted-foreground/50">null</span>}
