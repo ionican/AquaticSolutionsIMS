@@ -101,8 +101,22 @@ export async function POST(request: Request) {
               continue
             }
 
-            // Tables are pre-created via Supabase migrations, so we just clear and insert data
-            const postgresTableName = targetTableName.toLowerCase()
+            // Check target table exists in Supabase before attempting migration
+            const postgresTableName = targetTableName.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+
+            const { error: probeError } = await supabase
+              .from(postgresTableName)
+              .select('*', { count: 'exact', head: true })
+
+            if (probeError) {
+              send({
+                type: "table",
+                table: targetTableName,
+                status: "error",
+                error: `Table "${postgresTableName}" does not exist in Supabase. Create it in the Supabase SQL Editor first.`
+              })
+              continue
+            }
 
             // Map known tables to their primary key columns
             const primaryKeyMap: Record<string, string> = {

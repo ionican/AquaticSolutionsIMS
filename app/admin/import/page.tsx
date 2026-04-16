@@ -600,7 +600,14 @@ export default function ImportPage() {
                               </button>
                             </div>
                           </div>
-                          
+
+                          {/* Show error message on collapsed row */}
+                          {table.migrationStatus === "error" && table.error && (
+                            <div className="border-t border-destructive/20 bg-destructive/5 px-4 py-2">
+                              <p className="text-sm text-destructive">{table.error}</p>
+                            </div>
+                          )}
+
                           {expandedTables.has(table.name) && (
                             <div className="border-t border-border bg-background px-4 py-3">
                               <div className="space-y-2 mb-4">
