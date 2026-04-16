@@ -1,53 +1,44 @@
 import { getSupabase } from "@/lib/supabase"
 
+// Map of Azure SQL source names to Supabase target names
+const TABLE_NAME_MAP: Record<string, string> = {
+  'Ebsford_Clients': 'clients',
+  'Ebsford_Contacts': 'contacts',
+  'Ebsford_job_types': 'job_types',
+  'Ebsford_job_classes': 'job_classes',
+}
+
 export async function GET() {
   try {
     const supabase = getSupabase()
 
-    // Query Supabase for all user-created tables via pg_tables
-    const { data: pgTables, error: pgError } = await supabase
-      .rpc('get_table_names')
-      .select('*')
+    // Start with known system tables
+    const knownTables = new Set([
+      'jobs', 'events', 'clients', 'contacts',
+      'job_types', 'job_classes', 'parameters',
+      'migration_config'
+    ])
 
-    // If the RPC doesn't exist, fall back to a known list + discovery
-    let tableNames: string[]
+    // Read the migration_tables parameter to discover additional tables
+    const { data: paramData } = await supabase
+      .from("parameters")
+      .select("value")
+      .eq("parameter", "migration_tables")
+      .eq("company_id", 6)
+      .single()
 
-    if (pgError || !pgTables) {
-      // Fallback: try a broad set of known table names and discover which exist
-      const candidates = [
-        'jobs', 'events', 'clients', 'contacts',
-        'job_types', 'job_classes', 'parameters',
-        'migration_config'
-      ]
-
-      // Also try to discover tables by querying information_schema via raw SQL
-      const { data: schemaData } = await supabase
-        .from('information_schema.tables' as any)
-        .select('table_name')
-        .eq('table_schema', 'public')
-        .eq('table_type', 'BASE TABLE')
-
-      if (schemaData && schemaData.length > 0) {
-        tableNames = schemaData.map((t: any) => t.table_name)
-      } else {
-        // Last resort: probe each candidate
-        tableNames = []
-        for (const name of candidates) {
-          const { error } = await supabase
-            .from(name)
-            .select('*', { count: 'exact', head: true })
-          if (!error) {
-            tableNames.push(name)
-          }
-        }
+    if (paramData?.value) {
+      const sourceNames = paramData.value.split(",").map((t: string) => t.trim()).filter(Boolean)
+      for (const sourceName of sourceNames) {
+        // Convert source name to Supabase table name (lowercase)
+        const targetName = TABLE_NAME_MAP[sourceName] || sourceName
+        knownTables.add(targetName.toLowerCase().replace(/[^a-z0-9_]/g, '_'))
       }
-    } else {
-      tableNames = pgTables.map((t: any) => t.table_name || t.tablename)
     }
 
-    // Get row counts for each table
+    // Probe each table to check it exists and get row count
     const tables = []
-    for (const tableName of tableNames) {
+    for (const tableName of knownTables) {
       const { count, error } = await supabase
         .from(tableName)
         .select('*', { count: 'exact', head: true })
