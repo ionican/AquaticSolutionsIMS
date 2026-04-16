@@ -82,6 +82,7 @@ export async function POST(request: Request) {
 
             // Check target table exists in Supabase
             const postgresTableName = targetTableName.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+            let tableIsNew = false
 
             const { error: probeError } = await supabase
               .from(postgresTableName)
@@ -90,12 +91,21 @@ export async function POST(request: Request) {
             if (probeError) {
               // Table doesn't exist — try to auto-create it
               const dbUrl = process.env.SUPABASE_DB_URL
-              if (!dbUrl || !createTableSQL) {
+              if (!dbUrl) {
                 send({
                   type: "table",
                   table: targetTableName,
                   status: "error",
-                  error: `Table "${postgresTableName}" does not exist in Supabase. ${!dbUrl ? 'Set SUPABASE_DB_URL env var to enable auto-creation.' : 'No CREATE TABLE SQL available.'}`
+                  error: `Table "${postgresTableName}" does not exist in Supabase. Set SUPABASE_DB_URL env var to enable auto-creation.`
+                })
+                continue
+              }
+              if (!createTableSQL) {
+                send({
+                  type: "table",
+                  table: targetTableName,
+                  status: "error",
+                  error: `Table "${postgresTableName}" does not exist in Supabase. No CREATE TABLE SQL available — re-fetch the schema.`
                 })
                 continue
               }
@@ -106,10 +116,10 @@ export async function POST(request: Request) {
                 const pgClient = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
                 await pgClient.connect()
                 await pgClient.query(createTableSQL)
-                // Reload PostgREST schema cache so Supabase REST API sees the new table
                 await pgClient.query("NOTIFY pgrst, 'reload schema'")
                 await pgClient.end()
                 console.log(`[v0] Auto-created table "${postgresTableName}" in Supabase`)
+                tableIsNew = true
               } catch (createError: any) {
                 send({
                   type: "table",
@@ -147,26 +157,6 @@ export async function POST(request: Request) {
             // For parameters table, use upsert to preserve app-created rows
             const useUpsert = postgresTableName === 'parameters'
 
-            if (!useUpsert) {
-              console.log(`[v0] Clearing existing data from ${postgresTableName}`)
-              let { error: deleteError } = await supabase
-                .from(postgresTableName)
-                .delete()
-                .gte(pkColumn, 0)
-
-              if (deleteError) {
-                const retryResult = await supabase
-                  .from(postgresTableName)
-                  .delete()
-                  .not(pkColumn, 'is', null)
-                deleteError = retryResult.error
-              }
-
-              if (deleteError) {
-                console.log(`[v0] Delete error (may be empty table):`, deleteError.message)
-              }
-            }
-
             // Check for audit trail and company_id
             const hasAuditTrail = allColumns.some((col: any) => col.COLUMN_NAME === 'Superceded')
             const companyIdColumn = allColumns.find((col: any) => col.COLUMN_NAME.toLowerCase() === 'company_id')
@@ -186,47 +176,94 @@ export async function POST(request: Request) {
             const dataResult = await azureSqlQuery(dataQuery)
             const rows = dataResult.recordset
 
-            if (rows.length > 0) {
-              console.log(`[v0] Inserting ${rows.length} rows into ${postgresTableName}`)
+            // Convert column names to lowercase for PostgreSQL
+            const lowercaseRows = rows.map((row: Record<string, unknown>) => {
+              const newRow: Record<string, unknown> = {}
+              for (const [key, value] of Object.entries(row)) {
+                newRow[key.toLowerCase()] = value
+              }
+              return newRow
+            })
 
-              // Convert column names to lowercase for PostgreSQL
-              const lowercaseRows = rows.map((row: Record<string, unknown>) => {
-                const newRow: Record<string, unknown> = {}
-                for (const [key, value] of Object.entries(row)) {
-                  newRow[key.toLowerCase()] = value
+            // Deduplicate by primary key
+            const seenKeys = new Set<unknown>()
+            const uniqueRows = lowercaseRows.filter((row: Record<string, unknown>) => {
+              const pkValue = row[pkColumn]
+              if (seenKeys.has(pkValue)) return false
+              seenKeys.add(pkValue)
+              return true
+            })
+
+            if (tableIsNew) {
+              // For newly created tables, use direct pg connection (REST API cache won't know about them yet)
+              const dbUrl = process.env.SUPABASE_DB_URL!
+              const { Client } = await import("pg")
+              const pgClient = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
+              await pgClient.connect()
+
+              if (uniqueRows.length > 0) {
+                console.log(`[v0] Inserting ${uniqueRows.length} rows into ${postgresTableName} via pg`)
+                const cols = Object.keys(uniqueRows[0])
+                const batchSize = 100
+                for (let i = 0; i < uniqueRows.length; i += batchSize) {
+                  const batch = uniqueRows.slice(i, i + batchSize)
+                  const values = batch.map((row, rowIdx) =>
+                    `(${cols.map((col, colIdx) => `$${rowIdx * cols.length + colIdx + 1}`).join(', ')})`
+                  ).join(', ')
+                  const params = batch.flatMap(row => cols.map(col => row[col]))
+                  await pgClient.query(
+                    `INSERT INTO "${postgresTableName}" (${cols.map(c => `"${c}"`).join(', ')}) VALUES ${values}`,
+                    params
+                  )
                 }
-                return newRow
-              })
+              }
 
-              // Deduplicate by primary key
-              const seenKeys = new Set<unknown>()
-              const uniqueRows = lowercaseRows.filter((row: Record<string, unknown>) => {
-                const pkValue = row[pkColumn]
-                if (seenKeys.has(pkValue)) return false
-                seenKeys.add(pkValue)
-                return true
-              })
+              await pgClient.query("NOTIFY pgrst, 'reload schema'")
+              await pgClient.end()
+            } else {
+              // For existing tables, use Supabase REST API
+              if (!useUpsert) {
+                console.log(`[v0] Clearing existing data from ${postgresTableName}`)
+                let { error: deleteError } = await supabase
+                  .from(postgresTableName)
+                  .delete()
+                  .gte(pkColumn, 0)
 
-              // Insert in batches
-              const batchSize = 100
-              for (let i = 0; i < uniqueRows.length; i += batchSize) {
-                const batch = uniqueRows.slice(i, i + batchSize)
-
-                if (useUpsert) {
-                  const { error: upsertError } = await supabase
+                if (deleteError) {
+                  const retryResult = await supabase
                     .from(postgresTableName)
-                    .upsert(batch, { onConflict: pkColumn })
-                  if (upsertError) throw upsertError
-                } else {
-                  const { error: insertError } = await supabase
-                    .from(postgresTableName)
-                    .insert(batch)
-                  if (insertError) throw insertError
+                    .delete()
+                    .not(pkColumn, 'is', null)
+                  deleteError = retryResult.error
+                }
+
+                if (deleteError) {
+                  console.log(`[v0] Delete error (may be empty table):`, deleteError.message)
+                }
+              }
+
+              if (uniqueRows.length > 0) {
+                console.log(`[v0] Inserting ${uniqueRows.length} rows into ${postgresTableName}`)
+                const batchSize = 100
+                for (let i = 0; i < uniqueRows.length; i += batchSize) {
+                  const batch = uniqueRows.slice(i, i + batchSize)
+
+                  if (useUpsert) {
+                    const { error: upsertError } = await supabase
+                      .from(postgresTableName)
+                      .upsert(batch, { onConflict: pkColumn })
+                    if (upsertError) throw upsertError
+                  } else {
+                    const { error: insertError } = await supabase
+                      .from(postgresTableName)
+                      .insert(batch)
+                    if (insertError) throw insertError
+                  }
                 }
               }
             }
 
-            send({ type: "table", table: targetTableName, status: "success", rowCount: rows.length })
+            send({ type: "table", table: targetTableName, status: "success", rowCount: uniqueRows.length })
           } catch (tableError: any) {
             console.error(`[v0] Error migrating ${tableName}:`, tableError)
             const errorMsg = tableError?.message || tableError?.details || tableError?.hint || String(tableError)
