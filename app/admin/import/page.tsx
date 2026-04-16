@@ -3,7 +3,7 @@
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
-import { ChevronDown, ChevronRight, Database, Table, AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Database, Table, AlertCircle, CheckCircle2, Loader2, Plus, X } from "lucide-react"
 
 type MigrationStatus = "idle" | "fetching-schema" | "ready" | "migrating" | "success" | "error"
 
@@ -16,6 +16,7 @@ interface Column {
 
 interface TableInfo {
   name: string
+  sourceName?: string
   schema: string
   columnCount: number
   rowCount: number
@@ -30,6 +31,12 @@ interface TableMigrationStatus extends TableInfo {
   error?: string
 }
 
+interface AvailableTable {
+  name: string
+  schema: string
+  columnCount: number
+}
+
 export default function ImportPage() {
   const [status, setStatus] = useState<MigrationStatus>("idle")
   const [tables, setTables] = useState<TableMigrationStatus[]>([])
@@ -40,6 +47,10 @@ export default function ImportPage() {
   const [blockedIp, setBlockedIp] = useState<string | null>(null)
   const [savingConfig, setSavingConfig] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [showAddTable, setShowAddTable] = useState(false)
+  const [availableTables, setAvailableTables] = useState<AvailableTable[]>([])
+  const [loadingAvailable, setLoadingAvailable] = useState(false)
+  const [addingTable, setAddingTable] = useState<string | null>(null)
 
   const checkConnection = async () => {
     setConnectionConfigured(null)
@@ -92,6 +103,7 @@ export default function ImportPage() {
           
           return {
             name: t.name,
+            sourceName: t.sourceName,
             schema: 'dbo',
             columnCount: t.columns.filter((c: any) => !c.isAuditColumn).length,
             rowCount: t.totalRowCount,
@@ -143,6 +155,66 @@ export default function ImportPage() {
       }
       return table
     }))
+  }
+
+  const fetchAvailableTables = async () => {
+    setLoadingAvailable(true)
+    try {
+      const response = await fetch("/api/migration/available-tables")
+      const data = await response.json()
+      if (data.success) {
+        setAvailableTables(data.tables)
+      }
+    } catch {
+      // Ignore errors
+    }
+    setLoadingAvailable(false)
+  }
+
+  const handleShowAddTable = async () => {
+    setShowAddTable(true)
+    await fetchAvailableTables()
+  }
+
+  const addTable = async (sourceTableName: string) => {
+    setAddingTable(sourceTableName)
+    try {
+      const response = await fetch("/api/migration/fetch-schema", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tables: [sourceTableName] })
+      })
+      const data = await response.json()
+
+      if (data.success && data.tables.length > 0) {
+        const t = data.tables[0]
+        const newTable: TableMigrationStatus = {
+          name: t.name,
+          sourceName: t.sourceName,
+          schema: 'dbo',
+          columnCount: t.columns.filter((c: any) => !c.isAuditColumn).length,
+          rowCount: t.totalRowCount,
+          currentRowCount: t.currentRowCount,
+          hasAuditTrail: t.hasAuditTrail,
+          columns: t.columns.filter((c: any) => !c.isAuditColumn).map((col: any) => ({
+            name: col.name,
+            type: col.postgresType,
+            nullable: col.isNullable,
+            selected: true
+          })),
+          migrationStatus: "pending"
+        }
+        setTables(prev => [...prev, newTable])
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to add table")
+    }
+    setAddingTable(null)
+    setShowAddTable(false)
+  }
+
+  const removeTable = (tableName: string) => {
+    setTables(prev => prev.filter(t => t.name !== tableName))
   }
 
   const saveColumnConfig = async (tableName: string) => {
@@ -364,24 +436,72 @@ export default function ImportPage() {
                     <span className="text-muted-foreground">
                       {tables.length} tables, {totalRows.toLocaleString()} total rows to migrate
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      Note: Only current records (Superceded IS NULL) will be imported
-                    </span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-muted-foreground">
+                        Note: Only current records (Superceded IS NULL) will be imported
+                      </span>
+                      <Button onClick={handleShowAddTable} variant="outline" size="sm">
+                        <Plus className="mr-1 h-3 w-3" />
+                        Add Table
+                      </Button>
+                    </div>
                   </div>
-                  
+
+                  {/* Add Table Panel */}
+                  {showAddTable && (
+                    <div className="mb-4 rounded-md border border-border bg-muted/20 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-medium text-foreground">Select a table to add</h3>
+                        <Button onClick={() => setShowAddTable(false)} variant="ghost" size="sm">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {loadingAvailable ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading available tables...
+                        </div>
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                          {availableTables
+                            .filter(at => !tables.some(t => (t.sourceName || t.name) === at.name))
+                            .map(at => (
+                              <button
+                                key={at.name}
+                                onClick={() => addTable(at.name)}
+                                disabled={addingTable !== null}
+                                className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors disabled:opacity-50"
+                              >
+                                {addingTable === at.name ? (
+                                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                                ) : (
+                                  <Table className="h-3 w-3 text-primary" />
+                                )}
+                                <span className="font-medium">{at.name}</span>
+                                <span className="text-xs text-muted-foreground ml-auto">{at.columnCount} cols</span>
+                              </button>
+                            ))}
+                          {availableTables.filter(at => !tables.some(t => (t.sourceName || t.name) === at.name)).length === 0 && (
+                            <p className="text-sm text-muted-foreground col-span-full">All available tables are already added.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     {tables.map((table) => {
                       const selectedCount = table.columns.filter(c => c.selected).length
                       return (
-                        <div 
+                        <div
                           key={table.name}
                           className="rounded-md border border-border overflow-hidden"
                         >
-                          <button
-                            onClick={() => toggleTable(table.name)}
-                            className="flex w-full items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
+                          <div className="flex w-full items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors">
+                            <button
+                              onClick={() => toggleTable(table.name)}
+                              className="flex items-center gap-3 flex-1"
+                            >
                               {expandedTables.has(table.name) ? (
                                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
                               ) : (
@@ -389,12 +509,15 @@ export default function ImportPage() {
                               )}
                               <Table className="h-4 w-4 text-primary" />
                               <span className="font-medium text-foreground">{table.name}</span>
+                              {table.sourceName && table.sourceName !== table.name && (
+                                <span className="text-xs text-muted-foreground">({table.sourceName})</span>
+                              )}
                               {table.hasAuditTrail && (
                                 <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
                                   Audit Trail
                                 </span>
                               )}
-                            </div>
+                            </button>
                             <div className="flex items-center gap-4">
                               <span className="text-sm text-muted-foreground">
                                 {selectedCount} of {table.columnCount} columns
@@ -411,8 +534,15 @@ export default function ImportPage() {
                               {table.migrationStatus === "error" && (
                                 <AlertCircle className="h-4 w-4 text-destructive" />
                               )}
+                              <button
+                                onClick={() => removeTable(table.name)}
+                                className="ml-2 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                                title="Remove table from migration"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
                             </div>
-                          </button>
+                          </div>
                           
                           {expandedTables.has(table.name) && (
                             <div className="border-t border-border bg-background px-4 py-3">
