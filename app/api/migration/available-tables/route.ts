@@ -1,21 +1,8 @@
-import sql from 'mssql'
-
-const config: sql.config = {
-  server: process.env.AZURE_SQL_SERVER || '',
-  database: process.env.AZURE_SQL_DATABASE || '',
-  user: process.env.AZURE_SQL_USER || '',
-  password: process.env.AZURE_SQL_PASSWORD || '',
-  options: {
-    encrypt: true,
-    trustServerCertificate: false,
-  },
-}
+import { azureSqlQuery } from "@/lib/azure-sql"
 
 export async function GET() {
   try {
-    const pool = await sql.connect(config)
-
-    const result = await pool.request().query(`
+    const result = await azureSqlQuery(`
       SELECT
         t.TABLE_NAME,
         t.TABLE_SCHEMA,
@@ -26,11 +13,9 @@ export async function GET() {
       ORDER BY t.TABLE_NAME
     `)
 
-    await pool.close()
-
     return Response.json({
       success: true,
-      tables: result.recordset.map((t: { TABLE_NAME: string; TABLE_SCHEMA: string; column_count: number }) => ({
+      tables: result.recordset.map((t: any) => ({
         name: t.TABLE_NAME,
         schema: t.TABLE_SCHEMA,
         columnCount: t.column_count,

@@ -1,0 +1,13 @@
+{
+  "name": "azure-sql-proxy",
+  "version": "1.0.0",
+  "description": "Azure Function proxy for Azure SQL queries",
+  "main": "src/functions/*.js",
+  "scripts": {
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.0.0",
+    "mssql": "^11.0.1"
+  }
+}
