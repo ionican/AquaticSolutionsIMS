@@ -3,6 +3,16 @@ import { getSupabase } from "@/lib/supabase"
 const PARAM_NAME = "migration_tables"
 const COMPANY_ID = 6
 
+const DEFAULT_TABLES = [
+  'Jobs',
+  'Events',
+  'Ebsford_Clients',
+  'Ebsford_Contacts',
+  'Ebsford_job_types',
+  'Ebsford_job_classes',
+  'parameters'
+]
+
 export async function GET() {
   try {
     const supabase = getSupabase()
@@ -15,12 +25,18 @@ export async function GET() {
       .single()
 
     if (error || !data) {
-      return Response.json({ success: true, tables: null })
+      // Seed the default list
+      const defaultValue = DEFAULT_TABLES.join(",")
+      await supabase
+        .from("parameters")
+        .insert({ parameter: PARAM_NAME, value: defaultValue, company_id: COMPANY_ID })
+
+      return Response.json({ success: true, tables: DEFAULT_TABLES })
     }
 
     const tables = data.value
       ? data.value.split(",").map((t: string) => t.trim()).filter(Boolean)
-      : null
+      : DEFAULT_TABLES
 
     return Response.json({ success: true, tables })
   } catch (error) {
