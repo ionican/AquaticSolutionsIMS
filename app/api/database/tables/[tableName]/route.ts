@@ -1,31 +1,20 @@
 import { getSupabase } from "@/lib/supabase"
 
-// Tables allowed to be queried
-const ALLOWED_TABLES = [
-  'jobs',
-  'events',
-  'clients',
-  'contacts',
-  'job_types',
-  'job_classes',
-  'parameters'
-]
-
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ tableName: string }> }
 ) {
   try {
     const { tableName } = await params
-    
-    // Security check - only allow specific tables
-    if (!ALLOWED_TABLES.includes(tableName.toLowerCase())) {
+
+    // Validate table name contains only safe characters
+    if (!/^[a-z0-9_]+$/i.test(tableName)) {
       return Response.json(
-        { success: false, error: 'Table not allowed' },
-        { status: 403 }
+        { success: false, error: 'Invalid table name' },
+        { status: 400 }
       )
     }
-    
+
     const supabase = getSupabase()
     const url = new URL(request.url)
     const offset = parseInt(url.searchParams.get('offset') || '0')
