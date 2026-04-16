@@ -299,9 +299,10 @@ export default function ImportPage() {
       const response = await fetch("/api/migration/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           tables: tables.map(t => ({
             name: t.name,
+            sourceName: t.sourceName || t.name,
             selectedColumns: t.columns.filter(c => c.selected).map(c => c.name)
           }))
         })
