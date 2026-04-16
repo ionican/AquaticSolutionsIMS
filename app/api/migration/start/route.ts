@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 
 interface TableConfig {
   name: string
+  sourceName?: string
   selectedColumns: string[]
 }
 
@@ -61,32 +62,17 @@ export async function POST(request: Request) {
         const pool = await sql.connect(config)
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-        // Map table configs for quick lookup
-        const tableConfigMap = new Map(body.tables.map(t => [t.name, t.selectedColumns]))
-
-        // Get list of migration tables from fetch-schema
-        const MIGRATION_TABLES = [
-          'Jobs',
-          'Events', 
-          'Ebsford_Clients',
-          'Ebsford_Contacts',
-          'Ebsford_job_types',
-          'Ebsford_job_classes',
-          'parameters'
-        ]
-
-        // Map of source table names to target table names in Supabase
-        const TABLE_NAME_MAP: Record<string, string> = {
-          'Ebsford_Clients': 'Clients',
-          'Ebsford_Contacts': 'Contacts',
-          'Ebsford_job_types': 'job_types',
-          'Ebsford_job_classes': 'job_classes',
-        }
+        // Build table list from request body
+        // Each entry has: name (display/target name), sourceName (Azure SQL name), selectedColumns
+        const tablesToMigrate = body.tables.map(t => ({
+          sourceName: t.sourceName || t.name,
+          targetName: t.name,
+          selectedColumns: t.selectedColumns,
+        }))
 
         send({ type: "status", status: "migrating" })
 
-        for (const tableName of MIGRATION_TABLES) {
-          const targetTableName = TABLE_NAME_MAP[tableName] || tableName
+        for (const { sourceName: tableName, targetName: targetTableName, selectedColumns: requestedColumns } of tablesToMigrate) {
           send({ type: "table", table: targetTableName, status: "migrating" })
 
           try {
@@ -100,9 +86,10 @@ export async function POST(request: Request) {
 
             const allColumns = schemaResult.recordset
             
-            // Filter to selected columns if specified
-            const selectedColumns = tableConfigMap.get(tableName) || 
-              allColumns.map((c: any) => c.COLUMN_NAME)
+            // Use columns from request, or fall back to all columns
+            const selectedColumns = (requestedColumns && requestedColumns.length > 0)
+              ? requestedColumns
+              : allColumns.map((c: any) => c.COLUMN_NAME)
             
             if (selectedColumns.length === 0) {
               send({ 
@@ -117,7 +104,7 @@ export async function POST(request: Request) {
             // Tables are pre-created via Supabase migrations, so we just clear and insert data
             const postgresTableName = targetTableName.toLowerCase()
 
-            // Map tables to their primary key columns
+            // Map known tables to their primary key columns
             const primaryKeyMap: Record<string, string> = {
               'jobs': 'id',
               'events': 'task_id',
@@ -128,7 +115,18 @@ export async function POST(request: Request) {
               'parameters': 'id',
             }
 
-            const pkColumn = primaryKeyMap[postgresTableName] || 'id'
+            // For unknown tables, try to detect PK: look for identity column or first column
+            let pkColumn = primaryKeyMap[postgresTableName]
+            if (!pkColumn) {
+              const identityResult = await pool.request().query(`
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS c
+                WHERE c.TABLE_NAME = '${tableName}'
+                  AND COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') = 1
+              `)
+              pkColumn = identityResult.recordset.length > 0
+                ? identityResult.recordset[0].COLUMN_NAME.toLowerCase()
+                : allColumns[0]?.COLUMN_NAME?.toLowerCase() || 'id'
+            }
 
             // For parameters table, use upsert to preserve app-created rows
             // For all other tables, clear and re-insert
@@ -136,10 +134,20 @@ export async function POST(request: Request) {
 
             if (!useUpsert) {
               console.log(`[v0] Clearing existing data from ${postgresTableName}`)
-              const { error: deleteError } = await supabase
+              // Try numeric delete first, fall back to not-null filter
+              let { error: deleteError } = await supabase
                 .from(postgresTableName)
                 .delete()
                 .gte(pkColumn, 0)
+
+              if (deleteError) {
+                // Retry with a broader filter for non-numeric PKs
+                const retryResult = await supabase
+                  .from(postgresTableName)
+                  .delete()
+                  .not(pkColumn, 'is', null)
+                deleteError = retryResult.error
+              }
 
               if (deleteError) {
                 console.log(`[v0] Delete error (may be empty table):`, deleteError.message)
