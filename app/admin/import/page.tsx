@@ -53,6 +53,21 @@ export default function ImportPage() {
   const [addingTable, setAddingTable] = useState<string | null>(null)
   const [availableError, setAvailableError] = useState<string | null>(null)
 
+  const STORAGE_KEY = "migration-table-list"
+
+  const saveTableList = (tableList: TableMigrationStatus[]) => {
+    const sourceNames = tableList.map(t => t.sourceName || t.name)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sourceNames))
+  }
+
+  const getSavedTableList = (): string[] | null => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) return JSON.parse(saved)
+    } catch { /* ignore */ }
+    return null
+  }
+
   const checkConnection = async () => {
     setConnectionConfigured(null)
     setConnectionError(null)
@@ -86,9 +101,23 @@ export default function ImportPage() {
   const fetchSchema = async () => {
     setStatus("fetching-schema")
     setErrorMessage(null)
-    
+
     try {
-      const response = await fetch("/api/migration/fetch-schema")
+      const savedList = getSavedTableList()
+      let response: Response
+
+      if (savedList && savedList.length > 0) {
+        // Use the persisted table list
+        response = await fetch("/api/migration/fetch-schema", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tables: savedList })
+        })
+      } else {
+        // Use the default list
+        response = await fetch("/api/migration/fetch-schema")
+      }
+
       const data = await response.json()
       
       if (!data.success) {
@@ -125,6 +154,7 @@ export default function ImportPage() {
       )
 
       setTables(tablesWithConfig)
+      saveTableList(tablesWithConfig)
       setStatus("ready")
     } catch (error) {
       setStatus("error")
@@ -208,7 +238,11 @@ export default function ImportPage() {
           })),
           migrationStatus: "pending"
         }
-        setTables(prev => [...prev, newTable])
+        setTables(prev => {
+          const updated = [...prev, newTable]
+          saveTableList(updated)
+          return updated
+        })
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to add table")
@@ -218,7 +252,11 @@ export default function ImportPage() {
   }
 
   const removeTable = (tableName: string) => {
-    setTables(prev => prev.filter(t => t.name !== tableName))
+    setTables(prev => {
+      const updated = prev.filter(t => t.name !== tableName)
+      saveTableList(updated)
+      return updated
+    })
   }
 
   const saveColumnConfig = async (tableName: string) => {
