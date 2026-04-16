@@ -1,9 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { getSupabase } from "@/lib/supabase"
 
 // Tables allowed to be queried
 const ALLOWED_TABLES = [
@@ -31,10 +26,11 @@ export async function GET(
       )
     }
     
+    const supabase = getSupabase()
     const url = new URL(request.url)
     const offset = parseInt(url.searchParams.get('offset') || '0')
     const limit = parseInt(url.searchParams.get('limit') || '100')
-    
+
     // Get total count
     const { count } = await supabase
       .from(tableName)

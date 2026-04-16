@@ -1,10 +1,5 @@
-import { createClient } from "@supabase/supabase-js"
+import { getSupabase } from "@/lib/supabase"
 import { NextRequest } from "next/server"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 export async function GET(
   req: NextRequest,
@@ -16,6 +11,8 @@ export async function GET(
   if (isNaN(jobId)) {
     return Response.json({ error: "Invalid job ID" }, { status: 400 })
   }
+
+  const supabase = getSupabase()
 
   // Fetch the job
   const { data: job, error: jobError } = await supabase
@@ -70,6 +67,7 @@ export async function PATCH(
     return Response.json({ error: "Invalid job ID" }, { status: 400 })
   }
 
+  const supabase = getSupabase()
   const body = await req.json()
 
   const updateData: Record<string, unknown> = {}

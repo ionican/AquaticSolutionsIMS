@@ -1,13 +1,9 @@
-import { createClient } from "@supabase/supabase-js"
+import { getSupabase } from "@/lib/supabase"
 import { NextRequest } from "next/server"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getSupabase()
     const body = await req.json()
 
     // Get the next enquiry_id
