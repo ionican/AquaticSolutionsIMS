@@ -257,13 +257,14 @@ export async function POST(request: Request) {
             }
 
             send({ type: "table", table: targetTableName, status: "success", rowCount: rows.length })
-          } catch (tableError) {
+          } catch (tableError: any) {
             console.error(`[v0] Error migrating ${tableName}:`, tableError)
-            send({ 
-              type: "table", 
-              table: targetTableName, 
-              status: "error", 
-              error: tableError instanceof Error ? tableError.message : "Unknown error"
+            const errorMsg = tableError?.message || tableError?.details || tableError?.hint || String(tableError)
+            send({
+              type: "table",
+              table: targetTableName,
+              status: "error",
+              error: errorMsg
             })
           }
         }
