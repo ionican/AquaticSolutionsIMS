@@ -53,19 +53,13 @@ export default function ImportPage() {
   const [addingTable, setAddingTable] = useState<string | null>(null)
   const [availableError, setAvailableError] = useState<string | null>(null)
 
-  const STORAGE_KEY = "migration-table-list"
-
   const saveTableList = (tableList: TableMigrationStatus[]) => {
     const sourceNames = tableList.map(t => t.sourceName || t.name)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sourceNames))
-  }
-
-  const getSavedTableList = (): string[] | null => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) return JSON.parse(saved)
-    } catch { /* ignore */ }
-    return null
+    fetch("/api/migration/table-list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tables: sourceNames })
+    }).catch(() => { /* best effort */ })
   }
 
   const checkConnection = async () => {
@@ -103,18 +97,25 @@ export default function ImportPage() {
     setErrorMessage(null)
 
     try {
-      const savedList = getSavedTableList()
+      // Load saved table list from the parameters table
+      let savedList: string[] | null = null
+      try {
+        const listRes = await fetch("/api/migration/table-list")
+        const listData = await listRes.json()
+        if (listData.success && listData.tables) {
+          savedList = listData.tables
+        }
+      } catch { /* fall back to defaults */ }
+
       let response: Response
 
       if (savedList && savedList.length > 0) {
-        // Use the persisted table list
         response = await fetch("/api/migration/fetch-schema", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tables: savedList })
         })
       } else {
-        // Use the default list
         response = await fetch("/api/migration/fetch-schema")
       }
 
