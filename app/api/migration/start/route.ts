@@ -80,15 +80,31 @@ export async function POST(request: Request) {
               continue
             }
 
-            // Check target table exists in Supabase
+            // Check target table exists in Supabase via direct pg query
             const postgresTableName = targetTableName.toLowerCase().replace(/[^a-z0-9_]/g, '_')
             let tableIsNew = false
 
-            const { error: probeError } = await supabase
-              .from(postgresTableName)
-              .select('*', { count: 'exact', head: true })
+            let tableExists = false
+            const dbUrl = process.env.SUPABASE_DB_URL
+            if (dbUrl) {
+              const { Client } = await import("pg")
+              const checkClient = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
+              await checkClient.connect()
+              const checkResult = await checkClient.query(
+                `SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = $1)`,
+                [postgresTableName]
+              )
+              tableExists = checkResult.rows[0]?.exists === true
+              await checkClient.end()
+            } else {
+              // Fall back to REST API probe
+              const { error: probeError } = await supabase
+                .from(postgresTableName)
+                .select('*', { count: 'exact', head: true })
+              tableExists = !probeError
+            }
 
-            if (probeError) {
+            if (!tableExists) {
               // Table doesn't exist — try to auto-create it
               const dbUrl = process.env.SUPABASE_DB_URL
               if (!dbUrl) {
