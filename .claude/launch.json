@@ -1,11 +1,11 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-launch.json",
-  "servers": [
+  "version": "0.0.1",
+  "configurations": [
     {
       "name": "Next.js dev",
-      "command": "npm run dev",
-      "port": 3000,
-      "autoStart": true
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
     }
   ]
 }
