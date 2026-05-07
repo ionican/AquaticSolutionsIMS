@@ -1,15 +1,11 @@
-import { createClient } from "@supabase/supabase-js"
+import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = createSupabaseAdminClient()
   const { id } = await params
   const jobId = parseInt(id)
 
@@ -63,6 +59,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = createSupabaseAdminClient()
   const { id } = await params
   const jobId = parseInt(id)
 

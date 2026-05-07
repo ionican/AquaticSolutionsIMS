@@ -1,9 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createSupabaseAdminClient } from "@/lib/supabase-server"
 
 // Tables to show in the database overview (excluding system tables)
 const APP_TABLES = [
@@ -18,6 +13,7 @@ const APP_TABLES = [
 
 export async function GET() {
   try {
+    const supabase = createSupabaseAdminClient()
     const tables = []
     
     for (const tableName of APP_TABLES) {
