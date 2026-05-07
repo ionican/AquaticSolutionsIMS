@@ -17,6 +17,20 @@ function formatCount(value?: number) {
   return typeof value === "number" ? new Intl.NumberFormat("en-GB").format(value) : "-"
 }
 
+function statsDetail({
+  loading,
+  error,
+  loadedText,
+}: {
+  loading: boolean
+  error: boolean
+  loadedText: string
+}) {
+  if (error) return "Unable to load live data"
+  if (loading) return "Loading live data..."
+  return loadedText
+}
+
 export default function HomePage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
@@ -52,11 +66,11 @@ export default function HomePage() {
     }
   }, [])
 
-  const statsMessage = statsError
-    ? "Unable to load live data"
-    : loadingStats
-      ? "Loading live data..."
-      : "Live from Supabase"
+  const statsMessage = statsDetail({
+    loading: loadingStats,
+    error: statsError,
+    loadedText: "Live from Supabase",
+  })
 
   return (
     <div className="min-h-screen bg-background">
@@ -87,7 +101,11 @@ export default function HomePage() {
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              {statsError ? statsMessage : `${formatCount(stats?.totalJobs)} total jobs`}
+              {statsDetail({
+                loading: loadingStats,
+                error: statsError,
+                loadedText: `${formatCount(stats?.totalJobs)} total jobs`,
+              })}
             </p>
           </div>
           
@@ -117,7 +135,11 @@ export default function HomePage() {
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              {statsError ? statsMessage : `of ${formatCount(stats?.totalEvents)} total events`}
+              {statsDetail({
+                loading: loadingStats,
+                error: statsError,
+                loadedText: `of ${formatCount(stats?.totalEvents)} total events`,
+              })}
             </p>
           </div>
         </div>
