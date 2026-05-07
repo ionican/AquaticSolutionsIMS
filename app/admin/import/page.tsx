@@ -39,6 +39,8 @@ export default function ImportPage() {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [blockedIp, setBlockedIp] = useState<string | null>(null)
   const [currentIp, setCurrentIp] = useState<string | null>(null)
+  const [serverIp, setServerIp] = useState<string | null>(null)
+  const [serverConfig, setServerConfig] = useState<{ server?: string; database?: string; user?: string } | null>(null)
   const [savingConfig, setSavingConfig] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -59,9 +61,15 @@ export default function ImportPage() {
     setConnectionConfigured(null)
     setConnectionError(null)
     setBlockedIp(null)
+    setServerIp(null)
+    setServerConfig(null)
     try {
       const response = await fetch("/api/migration/check-connection")
       const data = await response.json()
+      if (data.serverIp) setServerIp(data.serverIp)
+      if (data.server || data.database || data.user) {
+        setServerConfig({ server: data.server, database: data.database, user: data.user })
+      }
       if (data.firewallBlocked) {
         setConnectionConfigured(false)
         setBlockedIp(data.blockedIp)
@@ -281,7 +289,43 @@ export default function ImportPage() {
             
             {currentIp && (
               <div className="mt-2 rounded-md border border-muted bg-muted/50 p-3 mb-3">
-                <p className="text-xs font-medium text-muted-foreground">Your IP address: <code className="bg-background px-1.5 py-0.5 rounded font-mono text-xs">{currentIp}</code></p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Client (Your Browser):</p>
+                <div className="space-y-1 text-xs">
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-20">Your IP:</span>
+                    <code className="bg-background px-1.5 py-0.5 rounded font-mono">{currentIp}</code>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {serverIp && (
+              <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 p-3 mb-3">
+                <p className="text-xs font-medium text-blue-900 mb-2">Server (v0 Backend):</p>
+                <div className="space-y-1 text-xs">
+                  <div className="flex gap-2">
+                    <span className="text-blue-900 w-20">Server IP:</span>
+                    <code className="bg-white px-1.5 py-0.5 rounded font-mono text-blue-900">{serverIp}</code>
+                  </div>
+                  {serverConfig?.server && (
+                    <div className="flex gap-2">
+                      <span className="text-blue-900 w-20">Database:</span>
+                      <code className="bg-white px-1.5 py-0.5 rounded font-mono text-blue-900">{serverConfig.server}</code>
+                    </div>
+                  )}
+                  {serverConfig?.database && (
+                    <div className="flex gap-2">
+                      <span className="text-blue-900 w-20">DB Name:</span>
+                      <code className="bg-white px-1.5 py-0.5 rounded font-mono text-blue-900">{serverConfig.database}</code>
+                    </div>
+                  )}
+                  {serverConfig?.user && (
+                    <div className="flex gap-2">
+                      <span className="text-blue-900 w-20">User:</span>
+                      <code className="bg-white px-1.5 py-0.5 rounded font-mono text-blue-900">{serverConfig.user}</code>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             
