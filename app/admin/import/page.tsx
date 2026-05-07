@@ -38,8 +38,22 @@ export default function ImportPage() {
   const [connectionConfigured, setConnectionConfigured] = useState<boolean | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [blockedIp, setBlockedIp] = useState<string | null>(null)
+  const [currentIp, setCurrentIp] = useState<string | null>(null)
   const [savingConfig, setSavingConfig] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    const fetchIp = async () => {
+      try {
+        const response = await fetch("/api/get-ip")
+        const data = await response.json()
+        setCurrentIp(data.ip)
+      } catch {
+        setCurrentIp(null)
+      }
+    }
+    fetchIp()
+  }, [])
 
   const checkConnection = async () => {
     setConnectionConfigured(null)
@@ -264,6 +278,12 @@ export default function ImportPage() {
           {/* Connection Status */}
           <div className="rounded-lg border border-border bg-card p-6">
             <h2 className="text-lg font-semibold text-card-foreground">Step 1: Connection Status</h2>
+            
+            {currentIp && (
+              <div className="mt-2 rounded-md border border-muted bg-muted/50 p-3 mb-3">
+                <p className="text-xs font-medium text-muted-foreground">Your IP address: <code className="bg-background px-1.5 py-0.5 rounded font-mono text-xs">{currentIp}</code></p>
+              </div>
+            )}
             
             {connectionConfigured === null ? (
               <div className="mt-3 flex items-center gap-2 text-muted-foreground">
