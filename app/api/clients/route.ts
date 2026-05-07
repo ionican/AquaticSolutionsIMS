@@ -1,11 +1,11 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
 export async function GET() {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
   const [clientsRes, contactsRes] = await Promise.all([
     supabase.from("clients").select("client_id, business_name").order("business_name"),
     supabase.from("contacts").select("contact_id, client_id"),
