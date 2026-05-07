@@ -281,7 +281,25 @@ export default function ImportPage() {
             
             {currentIp && (
               <div className="mt-2 rounded-md border border-muted bg-muted/50 p-3 mb-3">
-                <p className="text-xs font-medium text-muted-foreground">Your IP address: <code className="bg-background px-1.5 py-0.5 rounded font-mono text-xs">{currentIp}</code></p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Connection Details:</p>
+                <div className="space-y-1 text-xs">
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24">Your IP:</span>
+                    <code className="bg-background px-1.5 py-0.5 rounded font-mono">{currentIp}</code>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24">Server:</span>
+                    <code className="bg-background px-1.5 py-0.5 rounded font-mono">{process.env.NEXT_PUBLIC_AZURE_SQL_SERVER || process.env.AZURE_SQL_SERVER || 'Not set'}</code>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24">Database:</span>
+                    <code className="bg-background px-1.5 py-0.5 rounded font-mono">{process.env.NEXT_PUBLIC_AZURE_SQL_DATABASE || process.env.AZURE_SQL_DATABASE || 'Not set'}</code>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24">User:</span>
+                    <code className="bg-background px-1.5 py-0.5 rounded font-mono">{process.env.NEXT_PUBLIC_AZURE_SQL_USER || process.env.AZURE_SQL_USER || 'Not set'}</code>
+                  </div>
+                </div>
               </div>
             )}
             
