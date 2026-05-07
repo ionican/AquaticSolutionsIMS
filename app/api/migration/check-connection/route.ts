@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server"
 
+async function getServerIp() {
+  try {
+    const response = await fetch("https://api.ipify.org?format=json")
+    const data = await response.json()
+    return data.ip
+  } catch {
+    return null
+  }
+}
+
 export async function GET() {
   const server = process.env.AZURE_SQL_SERVER
   const database = process.env.AZURE_SQL_DATABASE
   const user = process.env.AZURE_SQL_USER
   const password = process.env.AZURE_SQL_PASSWORD
+  const serverIp = await getServerIp()
 
   const configured = !!(server && database && user && password)
 
@@ -41,7 +52,7 @@ export async function GET() {
 
     const tables = result.recordset.map((row: { TABLE_NAME: string }) => row.TABLE_NAME)
 
-    return NextResponse.json({ configured: true, tables })
+    return NextResponse.json({ configured: true, tables, serverIp })
   } catch (error) {
     console.error("Azure SQL connection error:", error)
     const message = error instanceof Error ? error.message : "Connection failed"
@@ -54,7 +65,11 @@ export async function GET() {
       configured: true, 
       error: message,
       blockedIp,
-      firewallBlocked: blockedIp !== null
+      firewallBlocked: blockedIp !== null,
+      server,
+      database,
+      user,
+      serverIp
     })
   }
 }
