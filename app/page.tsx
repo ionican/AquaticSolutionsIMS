@@ -3,8 +3,61 @@
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Briefcase, Users, CalendarClock, Plus } from "lucide-react"
+import { useEffect, useState } from "react"
+
+interface DashboardStats {
+  activeJobs: number
+  totalClients: number
+  pendingEvents: number
+  totalJobs: number
+  totalEvents: number
+}
+
+function formatCount(value?: number) {
+  return typeof value === "number" ? new Intl.NumberFormat("en-GB").format(value) : "-"
+}
 
 export default function HomePage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [statsError, setStatsError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadStats() {
+      try {
+        const response = await fetch("/api/dashboard/stats")
+
+        if (!response.ok) throw new Error("Failed to load dashboard stats")
+
+        const data = await response.json()
+
+        if (!cancelled) {
+          setStats(data)
+          setStatsError(false)
+        }
+      } catch (error) {
+        console.error("Dashboard stats error:", error)
+        if (!cancelled) setStatsError(true)
+      } finally {
+        if (!cancelled) setLoadingStats(false)
+      }
+    }
+
+    loadStats()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const statsMessage = statsError
+    ? "Unable to load live data"
+    : loadingStats
+      ? "Loading live data..."
+      : "Live from Supabase"
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -30,11 +83,11 @@ export default function HomePage() {
               </div>
               <div>
                 <h2 className="text-sm font-medium text-muted-foreground">Active Jobs</h2>
-                <p className="text-2xl font-bold text-foreground">-</p>
+                <p className="text-2xl font-bold text-foreground">{formatCount(stats?.activeJobs)}</p>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              Loading projects...
+              {statsError ? statsMessage : `${formatCount(stats?.totalJobs)} total jobs`}
             </p>
           </div>
           
@@ -45,11 +98,11 @@ export default function HomePage() {
               </div>
               <div>
                 <h2 className="text-sm font-medium text-muted-foreground">Clients</h2>
-                <p className="text-2xl font-bold text-foreground">-</p>
+                <p className="text-2xl font-bold text-foreground">{formatCount(stats?.totalClients)}</p>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              Total registered clients
+              {statsMessage}
             </p>
           </div>
           
@@ -60,11 +113,11 @@ export default function HomePage() {
               </div>
               <div>
                 <h2 className="text-sm font-medium text-muted-foreground">Pending Events</h2>
-                <p className="text-2xl font-bold text-foreground">-</p>
+                <p className="text-2xl font-bold text-foreground">{formatCount(stats?.pendingEvents)}</p>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              of - total events
+              {statsError ? statsMessage : `of ${formatCount(stats?.totalEvents)} total events`}
             </p>
           </div>
         </div>
