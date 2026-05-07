@@ -2,33 +2,9 @@
 
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { Briefcase, Users, CalendarClock, Loader2, Plus } from "lucide-react"
-
-interface Stats {
-  activeJobs: number
-  totalClients: number
-  pendingEvents: number
-  totalJobs: number
-  totalEvents: number
-}
+import { Briefcase, Users, CalendarClock, Plus } from "lucide-react"
 
 export default function HomePage() {
-  const router = useRouter()
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetch("/api/dashboard/stats")
-      .then(res => res.json())
-      .then(data => {
-        setStats(data)
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }, [])
-
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -40,7 +16,7 @@ export default function HomePage() {
               Welcome to the Project Management System
             </p>
           </div>
-          <Button onClick={() => router.push("/jobs/new")} size="lg">
+          <Button size="lg">
             <Plus className="h-5 w-5 mr-2" />
             New Job
           </Button>
@@ -54,15 +30,11 @@ export default function HomePage() {
               </div>
               <div>
                 <h2 className="text-sm font-medium text-muted-foreground">Active Jobs</h2>
-                {loading ? (
-                  <Loader2 className="mt-1 h-6 w-6 animate-spin text-muted-foreground" />
-                ) : (
-                  <p className="text-2xl font-bold text-foreground">{stats?.activeJobs?.toLocaleString() ?? 0}</p>
-                )}
+                <p className="text-2xl font-bold text-foreground">-</p>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              of {stats?.totalJobs?.toLocaleString() ?? 0} total projects
+              Loading projects...
             </p>
           </div>
           
@@ -73,11 +45,7 @@ export default function HomePage() {
               </div>
               <div>
                 <h2 className="text-sm font-medium text-muted-foreground">Clients</h2>
-                {loading ? (
-                  <Loader2 className="mt-1 h-6 w-6 animate-spin text-muted-foreground" />
-                ) : (
-                  <p className="text-2xl font-bold text-foreground">{stats?.totalClients?.toLocaleString() ?? 0}</p>
-                )}
+                <p className="text-2xl font-bold text-foreground">-</p>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
@@ -92,15 +60,11 @@ export default function HomePage() {
               </div>
               <div>
                 <h2 className="text-sm font-medium text-muted-foreground">Pending Events</h2>
-                {loading ? (
-                  <Loader2 className="mt-1 h-6 w-6 animate-spin text-muted-foreground" />
-                ) : (
-                  <p className="text-2xl font-bold text-foreground">{stats?.pendingEvents?.toLocaleString() ?? 0}</p>
-                )}
+                <p className="text-2xl font-bold text-foreground">-</p>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              of {stats?.totalEvents?.toLocaleString() ?? 0} total events
+              of - total events
             </p>
           </div>
         </div>
