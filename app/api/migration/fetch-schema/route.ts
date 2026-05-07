@@ -17,6 +17,7 @@ const MIGRATION_TABLES = [
   'Events', 
   'Ebsford_Clients',
   'Ebsford_Contacts',
+  'JobContacts',
   'Ebsford_job_types',
   'Ebsford_job_classes',
   'parameters'
@@ -26,6 +27,7 @@ const MIGRATION_TABLES = [
 const TABLE_NAME_MAP: Record<string, string> = {
   'Ebsford_Clients': 'Clients',
   'Ebsford_Contacts': 'Contacts',
+  'JobContacts': 'jobcontacts',
   'Ebsford_job_types': 'job_types',
   'Ebsford_job_classes': 'job_classes',
 }

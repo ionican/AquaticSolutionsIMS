@@ -6,6 +6,7 @@ const APP_TABLES = [
   'events',
   'clients',
   'contacts',
+  'jobcontacts',
   'job_types',
   'job_classes',
   'parameters'
