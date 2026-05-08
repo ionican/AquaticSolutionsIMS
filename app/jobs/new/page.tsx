@@ -2,7 +2,6 @@
 
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -42,7 +41,7 @@ const ROLE_PRESETS = [
   { value: "invoice", label: "Invoice Contact", title: "Invoice Contact", invoice: true, jobsheet: false, prenotification: false },
   { value: "jobsheet", label: "Jobsheet Contact", title: "Jobsheet Contact", invoice: false, jobsheet: true, prenotification: false },
   { value: "prenotification", label: "Pre-notification Contact", title: "Pre-notification Contact", invoice: false, jobsheet: false, prenotification: true },
-  { value: "custom", label: "Custom category...", title: "", invoice: false, jobsheet: false, prenotification: false },
+  { value: "custom", label: "Other...", title: "", invoice: false, jobsheet: false, prenotification: false },
 ] as const
 
 type ContactTarget =
@@ -515,6 +514,7 @@ function NewJobPageContent() {
 
       const contact = data.contact as Contact
       setContacts(current => [...current, contact].sort((a, b) => contactDisplayName(a).localeCompare(contactDisplayName(b))))
+      setFilteredContacts(current => [...current, contact].sort((a, b) => contactDisplayName(a).localeCompare(contactDisplayName(b))))
 
       if (newContactTarget.type === "main") {
         setContactId(String(contact.contact_id))
@@ -771,16 +771,25 @@ function NewJobPageContent() {
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                           Category
                         </label>
-                        <Select value={jobContact.role} onValueChange={value => handleRoleChange(jobContact.localId, value)}>
-                          <SelectTrigger className="h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ROLE_PRESETS.map(role => (
-                              <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {jobContact.role === "custom" ? (
+                          <Input
+                            value={jobContact.title}
+                            onChange={event => updateAdditionalContact(jobContact.localId, { title: event.target.value })}
+                            placeholder="Type category"
+                            className="h-9"
+                          />
+                        ) : (
+                          <Select value={jobContact.role} onValueChange={value => handleRoleChange(jobContact.localId, value)}>
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLE_PRESETS.map(role => (
+                                <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                       <div className="flex items-end justify-end">
                         <Button
@@ -793,44 +802,6 @@ function NewJobPageContent() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                      {jobContact.role === "custom" && (
-                        <div className="sm:col-span-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                          <div>
-                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                              Custom category
-                            </label>
-                            <Input
-                              value={jobContact.title}
-                              onChange={event => updateAdditionalContact(jobContact.localId, { title: event.target.value })}
-                              placeholder="e.g. Site Contact"
-                              className="h-9"
-                            />
-                          </div>
-                          <div className="grid grid-cols-3 gap-3 pt-6 sm:min-w-[260px]">
-                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={jobContact.jobsheet}
-                              onCheckedChange={checked => updateAdditionalContact(jobContact.localId, { jobsheet: checked === true })}
-                            />
-                            Jobsheet
-                          </label>
-                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={jobContact.invoice}
-                              onCheckedChange={checked => updateAdditionalContact(jobContact.localId, { invoice: checked === true })}
-                            />
-                            Invoice
-                          </label>
-                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={jobContact.prenotification}
-                              onCheckedChange={checked => updateAdditionalContact(jobContact.localId, { prenotification: checked === true })}
-                            />
-                            Pre-notify
-                          </label>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -1035,7 +1006,7 @@ function NewJobPageContent() {
                     Creating...
                   </>
                 ) : (
-                  "Create Contact"
+                  "OK"
                 )}
               </Button>
             </DialogFooter>
