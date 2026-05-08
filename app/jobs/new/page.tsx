@@ -726,9 +726,9 @@ function NewJobPageContent() {
                     disabled={!clientId}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"}>
-                        {selectedMainContactName}
-                      </SelectValue>
+                      <span className="truncate">
+                        {selectedMainContactName || (contactId ? "Selected contact" : "-- No contact --")}
+                      </span>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">-- No contact --</SelectItem>
@@ -762,9 +762,9 @@ function NewJobPageContent() {
                           disabled={!clientId}
                         >
                           <SelectTrigger className="h-9">
-                            <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"}>
-                              {contactDisplayNameById(contacts, jobContact.contact_id)}
-                            </SelectValue>
+                            <span className="truncate">
+                              {contactDisplayNameById(contacts, jobContact.contact_id) || (jobContact.contact_id ? "Selected contact" : "-- Select contact --")}
+                            </span>
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">-- Select contact --</SelectItem>
