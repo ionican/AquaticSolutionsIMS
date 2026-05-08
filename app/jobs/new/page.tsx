@@ -2,11 +2,12 @@
 
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, Save, Search, X, ChevronDown } from "lucide-react"
+import { ArrowLeft, Loader2, Save, Search, X, ChevronDown, Plus, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Wrapper to handle Suspense for useSearchParams
@@ -40,6 +41,24 @@ interface Contact {
   fname: string
   sname: string
   client_id: number
+}
+
+interface AdditionalJobContact {
+  localId: string
+  contact_id: string
+  title: string
+  invoice: boolean
+  jobsheet: boolean
+  prenotification: boolean
+}
+
+interface ExistingJobContact {
+  id: number
+  contact_id: number | null
+  title: string | null
+  invoice: boolean | null
+  jobsheet: boolean | null
+  prenotification: boolean | null
 }
 
 interface JobType {
@@ -199,6 +218,7 @@ function NewJobPageContent() {
   const [enquiryDate, setEnquiryDate] = useState(new Date().toISOString().split("T")[0])
   const [quotationValue, setQuotationValue] = useState("")
   const [notes, setNotes] = useState("")
+  const [additionalContacts, setAdditionalContacts] = useState<AdditionalJobContact[]>([])
 
   // Lookup data
   const [clients, setClients] = useState<Client[]>([])
@@ -245,6 +265,17 @@ function NewJobPageContent() {
           if (j.enquiry_date) setEnquiryDate((j.enquiry_date as string).split("T")[0])
           setQuotationValue(j.quotation_value ? String(j.quotation_value) : "")
           setNotes((j.notes as string) || "")
+          const existingJobContacts = (j.jobContacts as ExistingJobContact[] | undefined) || []
+          setAdditionalContacts(existingJobContacts
+            .filter(jobContact => jobContact.contact_id)
+            .map(jobContact => ({
+              localId: String(jobContact.id),
+              contact_id: String(jobContact.contact_id),
+              title: jobContact.title || "",
+              invoice: !!jobContact.invoice,
+              jobsheet: !!jobContact.jobsheet,
+              prenotification: !!jobContact.prenotification,
+            })))
         }
       }
       setLoadingLookups(false)
@@ -260,6 +291,33 @@ function NewJobPageContent() {
     }
     setContactId("")
   }, [clientId, contacts])
+
+  const addAdditionalContact = () => {
+    setAdditionalContacts(current => [
+      ...current,
+      {
+        localId: crypto.randomUUID(),
+        contact_id: "",
+        title: "",
+        invoice: false,
+        jobsheet: false,
+        prenotification: false,
+      },
+    ])
+  }
+
+  const updateAdditionalContact = (
+    localId: string,
+    updates: Partial<Omit<AdditionalJobContact, "localId">>
+  ) => {
+    setAdditionalContacts(current => current.map(jobContact =>
+      jobContact.localId === localId ? { ...jobContact, ...updates } : jobContact
+    ))
+  }
+
+  const removeAdditionalContact = (localId: string) => {
+    setAdditionalContacts(current => current.filter(jobContact => jobContact.localId !== localId))
+  }
 
   // Validation
   const canSave = clientId && projectName.trim()
@@ -294,6 +352,15 @@ function NewJobPageContent() {
       enquiry_date: enquiryDate,
       quotation_value: quotationValue || null,
       notes,
+      jobContacts: additionalContacts
+        .filter(jobContact => jobContact.contact_id)
+        .map(jobContact => ({
+          contact_id: jobContact.contact_id,
+          title: jobContact.title || null,
+          invoice: jobContact.invoice,
+          jobsheet: jobContact.jobsheet,
+          prenotification: jobContact.prenotification,
+        })),
     }
 
     try {
@@ -408,7 +475,13 @@ function NewJobPageContent() {
 
             {/* Client & Contact */}
             <div className="rounded-lg border border-border bg-card p-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Client & Contact</h2>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Client & Contact</h2>
+                <Button type="button" size="sm" variant="outline" onClick={addAdditionalContact} disabled={!clientId}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Contact
+                </Button>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1.5">
@@ -447,6 +520,92 @@ function NewJobPageContent() {
                   </Select>
                 </div>
               </div>
+              {additionalContacts.length > 0 && (
+                <div className="mt-5 space-y-3 border-t border-border pt-4">
+                  <div>
+                    <h3 className="text-xs font-medium text-foreground">Additional contacts</h3>
+                    <p className="text-xs text-muted-foreground">
+                      These are saved to the jobcontacts table for this job.
+                    </p>
+                  </div>
+                  {additionalContacts.map((jobContact, index) => (
+                    <div key={jobContact.localId} className="rounded-md border border-border bg-background p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium text-muted-foreground">Contact {index + 1}</span>
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => removeAdditionalContact(jobContact.localId)}
+                          aria-label="Remove contact"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                            Contact
+                          </label>
+                          <Select
+                            value={jobContact.contact_id || "none"}
+                            onValueChange={value => updateAdditionalContact(jobContact.localId, {
+                              contact_id: value === "none" ? "" : value,
+                            })}
+                            disabled={!clientId}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">-- Select contact --</SelectItem>
+                              {filteredContacts.map(contact => (
+                                <SelectItem key={contact.contact_id} value={String(contact.contact_id)}>
+                                  {`${contact.fname || ""} ${contact.sname || ""}`.trim() || "Unnamed"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                            Role / title
+                          </label>
+                          <Input
+                            value={jobContact.title}
+                            onChange={event => updateAdditionalContact(jobContact.localId, { title: event.target.value })}
+                            placeholder="e.g. Invoice Contact"
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 pt-6 lg:min-w-[260px]">
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              checked={jobContact.jobsheet}
+                              onCheckedChange={checked => updateAdditionalContact(jobContact.localId, { jobsheet: checked === true })}
+                            />
+                            Jobsheet
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              checked={jobContact.invoice}
+                              onCheckedChange={checked => updateAdditionalContact(jobContact.localId, { invoice: checked === true })}
+                            />
+                            Invoice
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              checked={jobContact.prenotification}
+                              onCheckedChange={checked => updateAdditionalContact(jobContact.localId, { prenotification: checked === true })}
+                            />
+                            Pre-notify
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Classification */}

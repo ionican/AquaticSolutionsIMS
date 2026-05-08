@@ -1,6 +1,35 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
 
+interface JobContactInput {
+  contact_id?: string | number | null
+  title?: string | null
+  invoice?: boolean | null
+  jobsheet?: boolean | null
+  prenotification?: boolean | null
+}
+
+function buildJobContactRows(jobContacts: unknown, enquiryId: number) {
+  if (!Array.isArray(jobContacts)) return []
+
+  return jobContacts
+    .map((jobContact: JobContactInput) => {
+      const contactId = jobContact.contact_id ? parseInt(String(jobContact.contact_id)) : NaN
+      if (Number.isNaN(contactId)) return null
+
+      return {
+        company_id: 6,
+        enquiry_id: enquiryId,
+        contact_id: contactId,
+        title: jobContact.title || null,
+        invoice: jobContact.invoice === true,
+        jobsheet: jobContact.jobsheet === true,
+        prenotification: jobContact.prenotification === true,
+      }
+    })
+    .filter((jobContact): jobContact is NonNullable<typeof jobContact> => jobContact !== null)
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -120,6 +149,29 @@ export async function PATCH(
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
+  }
+
+  if (Array.isArray(body.jobContacts)) {
+    const { error: deleteJobContactsError } = await supabase
+      .from("jobcontacts")
+      .delete()
+      .eq("enquiry_id", data.enquiry_id)
+
+    if (deleteJobContactsError) {
+      return Response.json({ error: deleteJobContactsError.message }, { status: 500 })
+    }
+
+    const jobContactRows = buildJobContactRows(body.jobContacts, data.enquiry_id)
+
+    if (jobContactRows.length > 0) {
+      const { error: insertJobContactsError } = await supabase
+        .from("jobcontacts")
+        .insert(jobContactRows)
+
+      if (insertJobContactsError) {
+        return Response.json({ error: insertJobContactsError.message }, { status: 500 })
+      }
+    }
   }
 
   return Response.json({ job: data })
