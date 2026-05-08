@@ -98,6 +98,11 @@ function contactDisplayName(contact: Contact) {
   return [contact.title, contact.fname, contact.sname].filter(Boolean).join(" ") || "Unnamed"
 }
 
+function contactDisplayNameById(contacts: Contact[], contactId: string) {
+  const contact = contacts.find(item => String(item.contact_id) === contactId)
+  return contact ? contactDisplayName(contact) : undefined
+}
+
 function createBlankAdditionalContact(): AdditionalJobContact {
   return {
     localId: crypto.randomUUID(),
@@ -532,6 +537,7 @@ function NewJobPageContent() {
 
   // Validation
   const canSave = clientId && projectName.trim()
+  const selectedMainContactName = contactDisplayNameById(contacts, contactId)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -720,7 +726,9 @@ function NewJobPageContent() {
                     disabled={!clientId}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"} />
+                      <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"}>
+                        {selectedMainContactName}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">-- No contact --</SelectItem>
@@ -754,7 +762,9 @@ function NewJobPageContent() {
                           disabled={!clientId}
                         >
                           <SelectTrigger className="h-9">
-                            <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"} />
+                            <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"}>
+                              {contactDisplayNameById(contacts, jobContact.contact_id)}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">-- Select contact --</SelectItem>
