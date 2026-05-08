@@ -3,6 +3,7 @@
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Briefcase, Users, CalendarClock, Plus } from "lucide-react"
+import Link from "next/link"
 import { useEffect, useState } from "react"
 
 interface DashboardStats {
@@ -83,9 +84,11 @@ export default function HomePage() {
               Welcome to the Project Management System
             </p>
           </div>
-          <Button size="lg">
-            <Plus className="h-5 w-5 mr-2" />
-            New Job
+          <Button size="lg" asChild>
+            <Link href="/jobs/new">
+              <Plus className="h-5 w-5 mr-2" />
+              New Job
+            </Link>
           </Button>
         </div>
         
