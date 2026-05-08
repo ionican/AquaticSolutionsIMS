@@ -304,6 +304,10 @@ function NewJobPageContent() {
   const [notes, setNotes] = useState("")
   const [additionalContacts, setAdditionalContacts] = useState<AdditionalJobContact[]>([])
   const [newContactTarget, setNewContactTarget] = useState<ContactTarget | null>(null)
+  const [pendingContactSelection, setPendingContactSelection] = useState<{
+    contactId: string
+    target: ContactTarget
+  } | null>(null)
   const [creatingContact, setCreatingContact] = useState(false)
   const [newContactError, setNewContactError] = useState<string | null>(null)
   const [newContactForm, setNewContactForm] = useState({
@@ -391,10 +395,26 @@ function NewJobPageContent() {
     }
   }, [clientId, contacts])
 
+  useEffect(() => {
+    if (!pendingContactSelection) return
+    if (!contacts.some(contact => String(contact.contact_id) === pendingContactSelection.contactId)) return
+
+    if (pendingContactSelection.target.type === "main") {
+      setContactId(pendingContactSelection.contactId)
+    } else {
+      updateAdditionalContact(pendingContactSelection.target.localId, {
+        contact_id: pendingContactSelection.contactId,
+      })
+    }
+
+    setPendingContactSelection(null)
+  }, [contacts, pendingContactSelection])
+
   const handleClientChange = (nextClientId: string) => {
     setClientId(nextClientId)
     setContactId("")
     setAdditionalContacts([])
+    setPendingContactSelection(null)
   }
 
   const handleCreateClient = async (businessName: string) => {
@@ -518,14 +538,14 @@ function NewJobPageContent() {
       }
 
       const contact = data.contact as Contact
+      const nextContactId = String(contact.contact_id || "")
+      if (!nextContactId) {
+        throw new Error("Created contact did not include an ID")
+      }
+
       setContacts(current => [...current, contact].sort((a, b) => contactDisplayName(a).localeCompare(contactDisplayName(b))))
       setFilteredContacts(current => [...current, contact].sort((a, b) => contactDisplayName(a).localeCompare(contactDisplayName(b))))
-
-      if (newContactTarget.type === "main") {
-        setContactId(String(contact.contact_id))
-      } else {
-        updateAdditionalContact(newContactTarget.localId, { contact_id: String(contact.contact_id) })
-      }
+      setPendingContactSelection({ contactId: nextContactId, target: newContactTarget })
 
       setNewContactTarget(null)
     } catch (err) {
