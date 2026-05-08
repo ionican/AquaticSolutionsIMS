@@ -70,6 +70,7 @@ export async function POST(request: Request) {
           'Events', 
           'Ebsford_Clients',
           'Ebsford_Contacts',
+          'JobContacts',
           'Ebsford_job_types',
           'Ebsford_job_classes',
           'parameters'
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
         const TABLE_NAME_MAP: Record<string, string> = {
           'Ebsford_Clients': 'Clients',
           'Ebsford_Contacts': 'Contacts',
+          'JobContacts': 'jobcontacts',
           'Ebsford_job_types': 'job_types',
           'Ebsford_job_classes': 'job_classes',
         }
@@ -101,7 +103,9 @@ export async function POST(request: Request) {
             const allColumns = schemaResult.recordset
             
             // Filter to selected columns if specified
-            const selectedColumns = tableConfigMap.get(tableName) || 
+            const selectedColumns =
+              tableConfigMap.get(tableName) ||
+              tableConfigMap.get(targetTableName) ||
               allColumns.map((c: any) => c.COLUMN_NAME)
             
             if (selectedColumns.length === 0) {
@@ -125,6 +129,7 @@ export async function POST(request: Request) {
               'events': 'task_id',
               'clients': 'client_id',
               'contacts': 'contact_id',
+              'jobcontacts': 'id',
               'job_types': 'job_type_id',
               'job_classes': 'job_class_id',
               'parameters': 'id',

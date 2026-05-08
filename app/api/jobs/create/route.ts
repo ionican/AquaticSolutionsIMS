@@ -1,13 +1,38 @@
-import { createClient } from "@supabase/supabase-js"
+import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+interface JobContactInput {
+  contact_id?: string | number | null
+  title?: string | null
+  invoice?: boolean | null
+  jobsheet?: boolean | null
+  prenotification?: boolean | null
+}
+
+function buildJobContactRows(jobContacts: unknown, enquiryId: number) {
+  if (!Array.isArray(jobContacts)) return []
+
+  return jobContacts
+    .map((jobContact: JobContactInput) => {
+      const contactId = jobContact.contact_id ? parseInt(String(jobContact.contact_id)) : NaN
+      if (Number.isNaN(contactId)) return null
+
+      return {
+        company_id: 6,
+        enquiry_id: enquiryId,
+        contact_id: contactId,
+        title: jobContact.title || null,
+        invoice: jobContact.invoice === true,
+        jobsheet: jobContact.jobsheet === true,
+        prenotification: jobContact.prenotification === true,
+      }
+    })
+    .filter((jobContact): jobContact is NonNullable<typeof jobContact> => jobContact !== null)
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = createSupabaseAdminClient()
     const body = await req.json()
 
     // Get the next enquiry_id
@@ -49,6 +74,20 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error("[v0] Error creating job:", error)
       return Response.json({ error: error.message }, { status: 500 })
+    }
+
+    const jobContactRows = buildJobContactRows(body.jobContacts, data.enquiry_id)
+
+    if (jobContactRows.length > 0) {
+      const { error: jobContactsError } = await supabase
+        .from("jobcontacts")
+        .insert(jobContactRows)
+
+      if (jobContactsError) {
+        console.error("[v0] Error creating job contacts:", jobContactsError)
+        await supabase.from("jobs").delete().eq("id", data.id)
+        return Response.json({ error: jobContactsError.message }, { status: 500 })
+      }
     }
 
     return Response.json({ success: true, job: data })

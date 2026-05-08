@@ -2,11 +2,19 @@
 
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Loader2, Save, Search, X, ChevronDown } from "lucide-react"
+import { ArrowLeft, Loader2, Save, Search, X, ChevronDown, Plus, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Wrapper to handle Suspense for useSearchParams
@@ -28,6 +36,17 @@ export default function NewJobPage() {
 }
 
 const JOB_STATUSES = ["Contact", "Enquiry", "Quoting", "Quoted", "Contracted", "Completed", "Lost"]
+const CREATE_NEW_CONTACT_VALUE = "__create_new_contact__"
+const ROLE_PRESETS = [
+  { value: "invoice", label: "Invoice Contact", title: "Invoice Contact", invoice: true, jobsheet: false, prenotification: false },
+  { value: "jobsheet", label: "Jobsheet Contact", title: "Jobsheet Contact", invoice: false, jobsheet: true, prenotification: false },
+  { value: "prenotification", label: "Pre-notification Contact", title: "Pre-notification Contact", invoice: false, jobsheet: false, prenotification: true },
+  { value: "custom", label: "Other...", title: "", invoice: false, jobsheet: false, prenotification: false },
+] as const
+
+type ContactTarget =
+  | { type: "main" }
+  | { type: "additional"; localId: string }
 
 interface Client {
   client_id: number
@@ -37,9 +56,32 @@ interface Client {
 
 interface Contact {
   contact_id: number
-  fname: string
-  sname: string
+  fname: string | null
+  sname: string | null
   client_id: number
+  title?: string | null
+  tel?: string | null
+  mobile?: string | null
+  email?: string | null
+}
+
+interface AdditionalJobContact {
+  localId: string
+  contact_id: string
+  role: string
+  title: string
+  invoice: boolean
+  jobsheet: boolean
+  prenotification: boolean
+}
+
+interface ExistingJobContact {
+  id: number
+  contact_id: number | null
+  title: string | null
+  invoice: boolean | null
+  jobsheet: boolean | null
+  prenotification: boolean | null
 }
 
 interface JobType {
@@ -52,16 +94,60 @@ interface JobClass {
   job_class: string
 }
 
+function contactDisplayName(contact: Contact) {
+  return [contact.title, contact.fname, contact.sname].filter(Boolean).join(" ") || "Unnamed"
+}
+
+function contactDisplayNameById(contacts: Contact[], contactId: string) {
+  const contact = contacts.find(item => String(item.contact_id) === contactId)
+  return contact ? contactDisplayName(contact) : undefined
+}
+
+function createBlankAdditionalContact(): AdditionalJobContact {
+  return {
+    localId: crypto.randomUUID(),
+    contact_id: "",
+    role: "invoice",
+    title: "Invoice Contact",
+    invoice: true,
+    jobsheet: false,
+    prenotification: false,
+  }
+}
+
+function applyRolePreset(role: string): Pick<AdditionalJobContact, "role" | "title" | "invoice" | "jobsheet" | "prenotification"> {
+  const preset = ROLE_PRESETS.find(item => item.value === role) || ROLE_PRESETS[0]
+
+  return {
+    role: preset.value,
+    title: preset.title,
+    invoice: preset.invoice,
+    jobsheet: preset.jobsheet,
+    prenotification: preset.prenotification,
+  }
+}
+
+function inferContactRole(jobContact: ExistingJobContact) {
+  if (jobContact.invoice) return "invoice"
+  if (jobContact.jobsheet) return "jobsheet"
+  if (jobContact.prenotification) return "prenotification"
+  return "custom"
+}
+
 // Searchable combobox component for clients
 function ClientCombobox({
   clients,
   value,
   onChange,
+  onCreateClient,
+  creatingClient,
   hasError,
 }: {
   clients: Client[]
   value: string
   onChange: (val: string) => void
+  onCreateClient: (businessName: string) => void
+  creatingClient?: boolean
   hasError?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -74,6 +160,8 @@ function ClientCombobox({
   const filtered = clients.filter(c =>
     c.business_name?.toLowerCase().includes(search.toLowerCase())
   ).slice(0, 50)
+  const trimmedSearch = search.trim()
+  const hasExactMatch = clients.some(c => c.business_name?.toLowerCase() === trimmedSearch.toLowerCase())
 
   // Close on outside click
   useEffect(() => {
@@ -169,6 +257,20 @@ function ClientCombobox({
                 </button>
               ))
             )}
+            {trimmedSearch && !hasExactMatch && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateClient(trimmedSearch)
+                  setOpen(false)
+                  setSearch("")
+                }}
+                disabled={creatingClient}
+                className="w-full border-t border-border px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent/20 disabled:opacity-50"
+              >
+                + Create client "{trimmedSearch}"
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -184,6 +286,7 @@ function NewJobPageContent() {
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [creatingClient, setCreatingClient] = useState(false)
 
   // Form data
   const [projectName, setProjectName] = useState("")
@@ -199,6 +302,22 @@ function NewJobPageContent() {
   const [enquiryDate, setEnquiryDate] = useState(new Date().toISOString().split("T")[0])
   const [quotationValue, setQuotationValue] = useState("")
   const [notes, setNotes] = useState("")
+  const [additionalContacts, setAdditionalContacts] = useState<AdditionalJobContact[]>([])
+  const [newContactTarget, setNewContactTarget] = useState<ContactTarget | null>(null)
+  const [pendingContactSelection, setPendingContactSelection] = useState<{
+    contactId: string
+    target: ContactTarget
+  } | null>(null)
+  const [creatingContact, setCreatingContact] = useState(false)
+  const [newContactError, setNewContactError] = useState<string | null>(null)
+  const [newContactForm, setNewContactForm] = useState({
+    title: "",
+    fname: "",
+    sname: "",
+    email: "",
+    tel: "",
+    mobile: "",
+  })
 
   // Lookup data
   const [clients, setClients] = useState<Client[]>([])
@@ -245,6 +364,22 @@ function NewJobPageContent() {
           if (j.enquiry_date) setEnquiryDate((j.enquiry_date as string).split("T")[0])
           setQuotationValue(j.quotation_value ? String(j.quotation_value) : "")
           setNotes((j.notes as string) || "")
+          const existingJobContacts = (j.jobContacts as ExistingJobContact[] | undefined) || []
+          setAdditionalContacts(existingJobContacts
+            .filter(jobContact => jobContact.contact_id)
+            .map(jobContact => {
+              const role = inferContactRole(jobContact)
+
+              return {
+                localId: String(jobContact.id),
+                contact_id: String(jobContact.contact_id),
+                role,
+                title: jobContact.title || "",
+                invoice: !!jobContact.invoice,
+                jobsheet: !!jobContact.jobsheet,
+                prenotification: !!jobContact.prenotification,
+              }
+            }))
         }
       }
       setLoadingLookups(false)
@@ -258,11 +393,171 @@ function NewJobPageContent() {
     } else {
       setFilteredContacts(contacts)
     }
-    setContactId("")
   }, [clientId, contacts])
+
+  useEffect(() => {
+    if (!pendingContactSelection) return
+    if (!contacts.some(contact => String(contact.contact_id) === pendingContactSelection.contactId)) return
+
+    if (pendingContactSelection.target.type === "main") {
+      setContactId(pendingContactSelection.contactId)
+    } else {
+      updateAdditionalContact(pendingContactSelection.target.localId, {
+        contact_id: pendingContactSelection.contactId,
+      })
+    }
+
+    setPendingContactSelection(null)
+  }, [contacts, pendingContactSelection])
+
+  const handleClientChange = (nextClientId: string) => {
+    setClientId(nextClientId)
+    setContactId("")
+    setAdditionalContacts([])
+    setPendingContactSelection(null)
+  }
+
+  const handleCreateClient = async (businessName: string) => {
+    const name = businessName.trim()
+    if (!name) return
+
+    setCreatingClient(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ business_name: name }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create client")
+      }
+
+      const client = data.client as Client
+      setClients(current => [...current, client].sort((a, b) => a.business_name.localeCompare(b.business_name)))
+      handleClientChange(String(client.client_id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create client")
+    } finally {
+      setCreatingClient(false)
+    }
+  }
+
+  const addAdditionalContact = () => {
+    setAdditionalContacts(current => [...current, createBlankAdditionalContact()])
+  }
+
+  const updateAdditionalContact = (
+    localId: string,
+    updates: Partial<Omit<AdditionalJobContact, "localId">>
+  ) => {
+    setAdditionalContacts(current => current.map(jobContact =>
+      jobContact.localId === localId ? { ...jobContact, ...updates } : jobContact
+    ))
+  }
+
+  const removeAdditionalContact = (localId: string) => {
+    setAdditionalContacts(current => current.filter(jobContact => jobContact.localId !== localId))
+  }
+
+  const openNewContactDialog = (target: ContactTarget) => {
+    if (!clientId) {
+      setError("Please select a client before adding a contact")
+      return
+    }
+
+    setNewContactTarget(target)
+    setNewContactError(null)
+    setNewContactForm({
+      title: "",
+      fname: "",
+      sname: "",
+      email: "",
+      tel: "",
+      mobile: "",
+    })
+  }
+
+  const handleContactSelect = (value: string, target: ContactTarget) => {
+    if (value === CREATE_NEW_CONTACT_VALUE) {
+      openNewContactDialog(target)
+      return
+    }
+
+    if (target.type === "main") {
+      setContactId(value === "none" ? "" : value)
+      return
+    }
+
+    updateAdditionalContact(target.localId, {
+      contact_id: value === "none" ? "" : value,
+    })
+  }
+
+  const handleRoleChange = (localId: string, role: string) => {
+    updateAdditionalContact(localId, applyRolePreset(role))
+  }
+
+  const handleCreateContact = async (event: React.FormEvent) => {
+    event.preventDefault()
+
+    if (!newContactTarget) return
+    if (!clientId) {
+      setNewContactError("Select a client before creating a contact")
+      return
+    }
+    if (!newContactForm.fname.trim() && !newContactForm.sname.trim()) {
+      setNewContactError("Enter a first name or surname")
+      return
+    }
+
+    setCreatingContact(true)
+    setNewContactError(null)
+
+    try {
+      const response = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          title: newContactForm.title,
+          fname: newContactForm.fname,
+          sname: newContactForm.sname,
+          email: newContactForm.email,
+          tel: newContactForm.tel,
+          mobile: newContactForm.mobile,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create contact")
+      }
+
+      const contact = data.contact as Contact
+      const nextContactId = String(contact.contact_id || "")
+      if (!nextContactId) {
+        throw new Error("Created contact did not include an ID")
+      }
+
+      setContacts(current => [...current, contact].sort((a, b) => contactDisplayName(a).localeCompare(contactDisplayName(b))))
+      setFilteredContacts(current => [...current, contact].sort((a, b) => contactDisplayName(a).localeCompare(contactDisplayName(b))))
+      setPendingContactSelection({ contactId: nextContactId, target: newContactTarget })
+
+      setNewContactTarget(null)
+    } catch (err) {
+      setNewContactError(err instanceof Error ? err.message : "Failed to create contact")
+    } finally {
+      setCreatingContact(false)
+    }
+  }
 
   // Validation
   const canSave = clientId && projectName.trim()
+  const selectedMainContactName = contactDisplayNameById(contacts, contactId)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -294,6 +589,15 @@ function NewJobPageContent() {
       enquiry_date: enquiryDate,
       quotation_value: quotationValue || null,
       notes,
+      jobContacts: additionalContacts
+        .filter(jobContact => jobContact.contact_id)
+        .map(jobContact => ({
+          contact_id: jobContact.contact_id,
+          title: jobContact.title || null,
+          invoice: jobContact.invoice,
+          jobsheet: jobContact.jobsheet,
+          prenotification: jobContact.prenotification,
+        })),
     }
 
     try {
@@ -408,7 +712,13 @@ function NewJobPageContent() {
 
             {/* Client & Contact */}
             <div className="rounded-lg border border-border bg-card p-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Client & Contact</h2>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Client & Contact</h2>
+                <Button type="button" size="sm" variant="outline" onClick={addAdditionalContact} disabled={!clientId}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add Contact
+                </Button>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1.5">
@@ -417,7 +727,9 @@ function NewJobPageContent() {
                   <ClientCombobox
                     clients={clients}
                     value={clientId}
-                    onChange={setClientId}
+                    onChange={handleClientChange}
+                    onCreateClient={handleCreateClient}
+                    creatingClient={creatingClient}
                     hasError={!clientId}
                   />
                 </div>
@@ -430,23 +742,100 @@ function NewJobPageContent() {
                   </label>
                   <Select
                     value={contactId || "none"}
-                    onValueChange={v => setContactId(v === "none" ? "" : v)}
+                    onValueChange={value => handleContactSelect(value, { type: "main" })}
                     disabled={!clientId}
                   >
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder={clientId ? "Select contact" : "Select a client first"} />
+                      <span className="truncate">
+                        {selectedMainContactName || (contactId ? "Selected contact" : "-- No contact --")}
+                      </span>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">-- No contact --</SelectItem>
+                      <SelectItem value={CREATE_NEW_CONTACT_VALUE}>+ Create new contact...</SelectItem>
                       {filteredContacts.map(c => (
                         <SelectItem key={c.contact_id} value={String(c.contact_id)}>
-                          {`${c.fname || ""} ${c.sname || ""}`.trim() || "Unnamed"}
+                          {contactDisplayName(c)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              {additionalContacts.length > 0 && (
+                <div className="mt-5 space-y-3 border-t border-border pt-4">
+                  <div>
+                    <h3 className="text-xs font-medium text-foreground">Additional contacts</h3>
+                  </div>
+                  {additionalContacts.map((jobContact, index) => (
+                    <div key={jobContact.localId} className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(180px,220px)_auto]">
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          Contact {index + 2}
+                        </label>
+                        <Select
+                          value={jobContact.contact_id || "none"}
+                          onValueChange={value => handleContactSelect(value, {
+                            type: "additional",
+                            localId: jobContact.localId,
+                          })}
+                          disabled={!clientId}
+                        >
+                          <SelectTrigger className="h-9">
+                            <span className="truncate">
+                              {contactDisplayNameById(contacts, jobContact.contact_id) || (jobContact.contact_id ? "Selected contact" : "-- Select contact --")}
+                            </span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">-- Select contact --</SelectItem>
+                            <SelectItem value={CREATE_NEW_CONTACT_VALUE}>+ Create new contact...</SelectItem>
+                            {filteredContacts.map(contact => (
+                              <SelectItem key={contact.contact_id} value={String(contact.contact_id)}>
+                                {contactDisplayName(contact)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          Category
+                        </label>
+                        {jobContact.role === "custom" ? (
+                          <Input
+                            value={jobContact.title}
+                            onChange={event => updateAdditionalContact(jobContact.localId, { title: event.target.value })}
+                            placeholder="Type category"
+                            className="h-9"
+                          />
+                        ) : (
+                          <Select value={jobContact.role} onValueChange={value => handleRoleChange(jobContact.localId, value)}>
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLE_PRESETS.map(role => (
+                                <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                      <div className="flex items-end justify-end">
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => removeAdditionalContact(jobContact.localId)}
+                          aria-label="Remove contact"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Classification */}
@@ -558,6 +947,102 @@ function NewJobPageContent() {
           </form>
         )}
       </main>
+      <Dialog open={!!newContactTarget} onOpenChange={open => !open && setNewContactTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create contact</DialogTitle>
+            <DialogDescription>
+              Add a contact for the selected client, then use it on this job.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateContact} className="space-y-4">
+            {newContactError && (
+              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                {newContactError}
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-[110px_minmax(0,1fr)_minmax(0,1fr)]">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Title</label>
+                <Input
+                  value={newContactForm.title}
+                  onChange={event => setNewContactForm(current => ({ ...current, title: event.target.value }))}
+                  placeholder="Mr"
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">First name</label>
+                <Input
+                  value={newContactForm.fname}
+                  onChange={event => setNewContactForm(current => ({ ...current, fname: event.target.value }))}
+                  placeholder="First name"
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Surname</label>
+                <Input
+                  value={newContactForm.sname}
+                  onChange={event => setNewContactForm(current => ({ ...current, sname: event.target.value }))}
+                  placeholder="Surname"
+                  className="h-9"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Email</label>
+              <Input
+                type="email"
+                value={newContactForm.email}
+                onChange={event => setNewContactForm(current => ({ ...current, email: event.target.value }))}
+                placeholder="name@example.com"
+                className="h-9"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Telephone</label>
+                <Input
+                  value={newContactForm.tel}
+                  onChange={event => setNewContactForm(current => ({ ...current, tel: event.target.value }))}
+                  placeholder="Telephone"
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Mobile</label>
+                <Input
+                  value={newContactForm.mobile}
+                  onChange={event => setNewContactForm(current => ({ ...current, mobile: event.target.value }))}
+                  placeholder="Mobile"
+                  className="h-9"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setNewContactTarget(null)}
+                disabled={creatingContact}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creatingContact}>
+                {creatingContact ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "OK"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

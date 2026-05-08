@@ -1,11 +1,8 @@
-import { createClient } from "@supabase/supabase-js"
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseKey)
+import { createSupabaseAnonClient } from "@/lib/supabase-server"
 
 export async function GET(request: Request) {
   try {
+    const supabase = createSupabaseAnonClient()
     const { searchParams } = new URL(request.url)
     const tableName = searchParams.get("table")
 
@@ -30,6 +27,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const supabase = createSupabaseAnonClient()
     const { tableName, columns } = await request.json()
 
     if (!tableName || !Array.isArray(columns)) {

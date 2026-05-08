@@ -1,9 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createSupabaseAdminClient } from "@/lib/supabase-server"
 
 // Tables allowed to be queried
 const ALLOWED_TABLES = [
@@ -11,6 +6,7 @@ const ALLOWED_TABLES = [
   'events',
   'clients',
   'contacts',
+  'jobcontacts',
   'job_types',
   'job_classes',
   'parameters'
@@ -21,6 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ tableName: string }> }
 ) {
   try {
+    const supabase = createSupabaseAdminClient()
     const { tableName } = await params
     
     // Security check - only allow specific tables

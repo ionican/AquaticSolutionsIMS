@@ -1,15 +1,40 @@
-import { createClient } from "@supabase/supabase-js"
+import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+interface JobContactInput {
+  contact_id?: string | number | null
+  title?: string | null
+  invoice?: boolean | null
+  jobsheet?: boolean | null
+  prenotification?: boolean | null
+}
+
+function buildJobContactRows(jobContacts: unknown, enquiryId: number) {
+  if (!Array.isArray(jobContacts)) return []
+
+  return jobContacts
+    .map((jobContact: JobContactInput) => {
+      const contactId = jobContact.contact_id ? parseInt(String(jobContact.contact_id)) : NaN
+      if (Number.isNaN(contactId)) return null
+
+      return {
+        company_id: 6,
+        enquiry_id: enquiryId,
+        contact_id: contactId,
+        title: jobContact.title || null,
+        invoice: jobContact.invoice === true,
+        jobsheet: jobContact.jobsheet === true,
+        prenotification: jobContact.prenotification === true,
+      }
+    })
+    .filter((jobContact): jobContact is NonNullable<typeof jobContact> => jobContact !== null)
+}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = createSupabaseAdminClient()
   const { id } = await params
   const jobId = parseInt(id)
 
@@ -36,6 +61,37 @@ export async function GET(
     job.job_class_id ? supabase.from("job_classes").select("*").eq("job_class_id", job.job_class_id).single() : { data: null },
   ])
 
+  const { data: jobContacts, error: jobContactsError } = await supabase
+    .from("jobcontacts")
+    .select("id, company_id, enquiry_id, contact_id, title, invoice, jobsheet, prenotification")
+    .eq("enquiry_id", job.enquiry_id)
+    .order("id", { ascending: true })
+
+  if (jobContactsError) {
+    console.error("Job contacts fetch error:", jobContactsError)
+  }
+
+  const jobContactIds = [
+    ...new Set((jobContacts || []).map((jobContact) => jobContact.contact_id).filter(Boolean)),
+  ]
+
+  const { data: linkedContacts, error: linkedContactsError } = jobContactIds.length
+    ? await supabase.from("contacts").select("*").in("contact_id", jobContactIds)
+    : { data: [], error: null }
+
+  if (linkedContactsError) {
+    console.error("Linked contacts fetch error:", linkedContactsError)
+  }
+
+  const contactsById = new Map(
+    (linkedContacts || []).map((contact) => [contact.contact_id, contact])
+  )
+
+  const resolvedJobContacts = (jobContacts || []).map((jobContact) => ({
+    ...jobContact,
+    contact: contactsById.get(jobContact.contact_id) ?? null,
+  }))
+
   // Fetch events for this job, ordered by date
   const { data: events, error: eventsError } = await supabase
     .from("events")
@@ -52,6 +108,7 @@ export async function GET(
       ...job,
       client: clientRes.data,
       contact: contactRes.data,
+      jobContacts: resolvedJobContacts,
       job_type: typeRes.data,
       job_class: classRes.data,
     },
@@ -63,6 +120,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const supabase = createSupabaseAdminClient()
   const { id } = await params
   const jobId = parseInt(id)
 
@@ -91,6 +149,29 @@ export async function PATCH(
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
+  }
+
+  if (Array.isArray(body.jobContacts)) {
+    const { error: deleteJobContactsError } = await supabase
+      .from("jobcontacts")
+      .delete()
+      .eq("enquiry_id", data.enquiry_id)
+
+    if (deleteJobContactsError) {
+      return Response.json({ error: deleteJobContactsError.message }, { status: 500 })
+    }
+
+    const jobContactRows = buildJobContactRows(body.jobContacts, data.enquiry_id)
+
+    if (jobContactRows.length > 0) {
+      const { error: insertJobContactsError } = await supabase
+        .from("jobcontacts")
+        .insert(jobContactRows)
+
+      if (insertJobContactsError) {
+        return Response.json({ error: insertJobContactsError.message }, { status: 500 })
+      }
+    }
   }
 
   return Response.json({ job: data })

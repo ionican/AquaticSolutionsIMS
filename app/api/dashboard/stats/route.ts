@@ -1,12 +1,9 @@
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createSupabaseAdminClient } from "@/lib/supabase-server"
 
 export async function GET() {
   try {
+    const supabase = createSupabaseAdminClient()
+
     // Count active jobs (excluding Completed and Lost)
     const { count: activeJobs } = await supabase
       .from("jobs")
