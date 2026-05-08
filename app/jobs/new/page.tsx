@@ -42,7 +42,7 @@ const ROLE_PRESETS = [
   { value: "invoice", label: "Invoice Contact", title: "Invoice Contact", invoice: true, jobsheet: false, prenotification: false },
   { value: "jobsheet", label: "Jobsheet Contact", title: "Jobsheet Contact", invoice: false, jobsheet: true, prenotification: false },
   { value: "prenotification", label: "Pre-notification Contact", title: "Pre-notification Contact", invoice: false, jobsheet: false, prenotification: true },
-  { value: "custom", label: "Custom", title: "", invoice: false, jobsheet: false, prenotification: false },
+  { value: "custom", label: "Custom category...", title: "", invoice: false, jobsheet: false, prenotification: false },
 ] as const
 
 type ContactTarget =
@@ -135,11 +135,15 @@ function ClientCombobox({
   clients,
   value,
   onChange,
+  onCreateClient,
+  creatingClient,
   hasError,
 }: {
   clients: Client[]
   value: string
   onChange: (val: string) => void
+  onCreateClient: (businessName: string) => void
+  creatingClient?: boolean
   hasError?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -152,6 +156,8 @@ function ClientCombobox({
   const filtered = clients.filter(c =>
     c.business_name?.toLowerCase().includes(search.toLowerCase())
   ).slice(0, 50)
+  const trimmedSearch = search.trim()
+  const hasExactMatch = clients.some(c => c.business_name?.toLowerCase() === trimmedSearch.toLowerCase())
 
   // Close on outside click
   useEffect(() => {
@@ -247,6 +253,20 @@ function ClientCombobox({
                 </button>
               ))
             )}
+            {trimmedSearch && !hasExactMatch && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateClient(trimmedSearch)
+                  setOpen(false)
+                  setSearch("")
+                }}
+                disabled={creatingClient}
+                className="w-full border-t border-border px-3 py-2 text-left text-sm font-medium text-primary hover:bg-accent/20 disabled:opacity-50"
+              >
+                + Create client "{trimmedSearch}"
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -262,6 +282,7 @@ function NewJobPageContent() {
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [creatingClient, setCreatingClient] = useState(false)
 
   // Form data
   const [projectName, setProjectName] = useState("")
@@ -370,6 +391,35 @@ function NewJobPageContent() {
     setClientId(nextClientId)
     setContactId("")
     setAdditionalContacts([])
+  }
+
+  const handleCreateClient = async (businessName: string) => {
+    const name = businessName.trim()
+    if (!name) return
+
+    setCreatingClient(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ business_name: name }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create client")
+      }
+
+      const client = data.client as Client
+      setClients(current => [...current, client].sort((a, b) => a.business_name.localeCompare(b.business_name)))
+      handleClientChange(String(client.client_id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create client")
+    } finally {
+      setCreatingClient(false)
+    }
   }
 
   const addAdditionalContact = () => {
@@ -652,6 +702,8 @@ function NewJobPageContent() {
                     clients={clients}
                     value={clientId}
                     onChange={handleClientChange}
+                    onCreateClient={handleCreateClient}
+                    creatingClient={creatingClient}
                     hasError={!clientId}
                   />
                 </div>
@@ -745,7 +797,7 @@ function NewJobPageContent() {
                         <div className="sm:col-span-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                              Bespoke category
+                              Custom category
                             </label>
                             <Input
                               value={jobContact.title}
