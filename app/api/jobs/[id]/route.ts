@@ -32,6 +32,37 @@ export async function GET(
     job.job_class_id ? supabase.from("job_classes").select("*").eq("job_class_id", job.job_class_id).single() : { data: null },
   ])
 
+  const { data: jobContacts, error: jobContactsError } = await supabase
+    .from("jobcontacts")
+    .select("id, company_id, enquiry_id, contact_id, title, invoice, jobsheet, prenotification")
+    .eq("enquiry_id", job.enquiry_id)
+    .order("id", { ascending: true })
+
+  if (jobContactsError) {
+    console.error("Job contacts fetch error:", jobContactsError)
+  }
+
+  const jobContactIds = [
+    ...new Set((jobContacts || []).map((jobContact) => jobContact.contact_id).filter(Boolean)),
+  ]
+
+  const { data: linkedContacts, error: linkedContactsError } = jobContactIds.length
+    ? await supabase.from("contacts").select("*").in("contact_id", jobContactIds)
+    : { data: [], error: null }
+
+  if (linkedContactsError) {
+    console.error("Linked contacts fetch error:", linkedContactsError)
+  }
+
+  const contactsById = new Map(
+    (linkedContacts || []).map((contact) => [contact.contact_id, contact])
+  )
+
+  const resolvedJobContacts = (jobContacts || []).map((jobContact) => ({
+    ...jobContact,
+    contact: contactsById.get(jobContact.contact_id) ?? null,
+  }))
+
   // Fetch events for this job, ordered by date
   const { data: events, error: eventsError } = await supabase
     .from("events")
@@ -48,6 +79,7 @@ export async function GET(
       ...job,
       client: clientRes.data,
       contact: contactRes.data,
+      jobContacts: resolvedJobContacts,
       job_type: typeRes.data,
       job_class: classRes.data,
     },

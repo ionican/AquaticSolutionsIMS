@@ -53,8 +53,29 @@ interface Job {
     email: string
     title: string
   } | null
+  jobContacts: JobContact[]
   job_type: { job_type_id: number; job_type: string } | null
   job_class: { job_class_id: number; job_class: string } | null
+}
+
+interface JobContact {
+  id: number
+  company_id: number | null
+  enquiry_id: number
+  contact_id: number
+  title: string | null
+  invoice: boolean | null
+  jobsheet: boolean | null
+  prenotification: boolean | null
+  contact: {
+    contact_id: number
+    fname: string | null
+    sname: string | null
+    tel: string | null
+    mobile: string | null
+    email: string | null
+    title: string | null
+  } | null
 }
 
 interface Event {
@@ -89,6 +110,13 @@ function formatDate(val: string | null) {
 function formatCurrency(val: number | null) {
   if (val == null) return "—"
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(val)
+}
+
+function contactName(jobContact: JobContact) {
+  const contact = jobContact.contact
+  if (!contact) return `Contact #${jobContact.contact_id}`
+  const displayName = [contact.title, contact.fname, contact.sname].filter(Boolean).join(" ")
+  return displayName || `Contact #${jobContact.contact_id}`
 }
 
 function DataField({ label, value, icon: Icon }: { label: string; value: React.ReactNode; icon?: React.ComponentType<{ className?: string }> }) {
@@ -266,9 +294,59 @@ export default function JobDetailPage() {
             {/* Contact Card */}
             <div className="rounded-lg border border-border bg-card p-4">
               <h2 className="text-sm font-semibold text-card-foreground mb-3 flex items-center gap-2">
-                <User className="h-4 w-4" /> Contact
+                <User className="h-4 w-4" /> Contacts ({job.jobContacts?.length || 0})
               </h2>
-              {job.contact ? (
+              {job.jobContacts?.length ? (
+                <div className="space-y-3">
+                  {job.jobContacts.map((jobContact) => (
+                    <div key={jobContact.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{contactName(jobContact)}</p>
+                          {jobContact.title && (
+                            <p className="text-xs text-muted-foreground">{jobContact.title}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {jobContact.jobsheet && (
+                            <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                              Jobsheet
+                            </span>
+                          )}
+                          {jobContact.invoice && (
+                            <span className="rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+                              Invoice
+                            </span>
+                          )}
+                          {jobContact.prenotification && (
+                            <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                              Pre-notify
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {jobContact.contact?.tel && (
+                        <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" /> {jobContact.contact.tel}
+                        </p>
+                      )}
+                      {jobContact.contact?.mobile && (
+                        <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" /> {jobContact.contact.mobile}
+                        </p>
+                      )}
+                      {jobContact.contact?.email && (
+                        <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          <a href={`mailto:${jobContact.contact.email}`} className="text-primary hover:underline">
+                            {jobContact.contact.email}
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : job.contact ? (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">
                     {[job.contact.title, job.contact.fname, job.contact.sname].filter(Boolean).join(" ")}
@@ -291,7 +369,7 @@ export default function JobDetailPage() {
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No contact assigned</p>
+                <p className="text-sm text-muted-foreground">No contacts assigned</p>
               )}
             </div>
           </div>
