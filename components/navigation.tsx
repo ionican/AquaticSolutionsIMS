@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 
@@ -19,7 +20,15 @@ export function Navigation() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <nav className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-8">
-            <Link href="/" className="text-xl font-semibold text-foreground">
+            <Link href="/" className="flex items-center gap-2 text-xl font-semibold text-foreground">
+              <Image
+                src="/brand/aquatic-solutions-header-icon.png"
+                alt=""
+                width={28}
+                height={28}
+                className="size-7 shrink-0"
+                priority
+              />
               Project Manager
             </Link>
             <div className="hidden sm:flex items-center gap-1">
