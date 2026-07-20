@@ -1,16 +1,64 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
+import { fetchAllPages } from "@/lib/supabase-pagination"
 import { NextRequest } from "next/server"
 
-export async function GET() {
+interface Client {
+  client_id: number
+  business_name: string
+  address1: string | null
+  address2: string | null
+  town: string | null
+  county: string | null
+  pcode: string | null
+  web_site: string | null
+  active: string | null
+}
+
+interface ContactReference {
+  contact_id: number
+  client_id: number
+}
+
+// status filter: "active" (default) hides deactivated records so operational
+// selectors (e.g. the New Job form) never offer them; management views pass
+// "all" or "inactive" explicitly. A row counts as active unless active = "n".
+type StatusFilter = "active" | "inactive" | "all"
+
+function resolveStatus(req: NextRequest): StatusFilter {
+  const status = new URL(req.url).searchParams.get("status")
+  return status === "all" || status === "inactive" ? status : "active"
+}
+
+export async function GET(req: NextRequest) {
   const supabase = createSupabaseAdminClient()
+  const status = resolveStatus(req)
 
   const [clientsRes, contactsRes] = await Promise.all([
-    supabase.from("clients").select("client_id, business_name").order("business_name"),
-    supabase.from("contacts").select("contact_id, client_id"),
+    fetchAllPages<Client>((from, to) => {
+      let query = supabase
+        .from("clients")
+        .select("client_id, business_name, address1, address2, town, county, pcode, web_site, active")
+        .order("business_name")
+        .order("client_id")
+      if (status === "active") query = query.or("active.is.null,active.neq.n")
+      else if (status === "inactive") query = query.eq("active", "n")
+      return query.range(from, to)
+    }),
+    fetchAllPages<ContactReference>((from, to) =>
+      supabase
+        .from("contacts")
+        .select("contact_id, client_id")
+        .order("contact_id")
+        .range(from, to)
+    ),
   ])
 
   if (clientsRes.error) {
     return Response.json({ error: clientsRes.error.message }, { status: 500 })
+  }
+
+  if (contactsRes.error) {
+    return Response.json({ error: contactsRes.error.message }, { status: 500 })
   }
 
   // Build contact count map
@@ -56,11 +104,17 @@ export async function POST(req: NextRequest) {
         id: nextClientId,
         client_id: nextClientId,
         business_name: businessName,
+        address1: body.address1 || null,
+        address2: body.address2 || null,
+        town: body.town || null,
+        county: body.county || null,
+        pcode: body.pcode || null,
+        web_site: body.web_site || null,
         company_id: 6,
         active: "y",
         updateddateutc: new Date().toISOString(),
       })
-      .select("client_id, business_name")
+      .select("client_id, business_name, address1, address2, town, county, pcode, web_site, active")
       .single()
 
     if (error) {

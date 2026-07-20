@@ -1,22 +1,44 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
+import { fetchAllPages } from "@/lib/supabase-pagination"
 import { NextRequest } from "next/server"
+
+interface Contact {
+  contact_id: number
+  fname: string | null
+  sname: string | null
+  client_id: number
+  title: string | null
+  tel: string | null
+  mobile: string | null
+  email: string | null
+  active: string | null
+}
 
 export async function GET(req: NextRequest) {
   const supabase = createSupabaseAdminClient()
 
   const { searchParams } = new URL(req.url)
   const clientId = searchParams.get("client_id")
+  // "active" (default) hides deactivated contacts from operational selectors
+  // (e.g. the New Job form); management views pass "all"/"inactive" explicitly.
+  const statusParam = searchParams.get("status")
+  const status = statusParam === "all" || statusParam === "inactive" ? statusParam : "active"
 
-  let query = supabase
-    .from("contacts")
-    .select("contact_id, fname, sname, client_id, title, tel, mobile, email")
-    .order("sname")
+  const { data, error } = await fetchAllPages<Contact>((from, to) => {
+    let query = supabase
+      .from("contacts")
+      .select("contact_id, fname, sname, client_id, title, tel, mobile, email, active")
+      .order("sname")
+      .order("contact_id")
 
-  if (clientId) {
-    query = query.eq("client_id", parseInt(clientId))
-  }
+    if (clientId) {
+      query = query.eq("client_id", parseInt(clientId))
+    }
+    if (status === "active") query = query.or("active.is.null,active.neq.n")
+    else if (status === "inactive") query = query.eq("active", "n")
 
-  const { data, error } = await query
+    return query.range(from, to)
+  })
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
@@ -61,10 +83,10 @@ export async function POST(req: NextRequest) {
         tel: body.tel || null,
         mobile: body.mobile || null,
         email: body.email || null,
-        active: true,
+        active: "y",
         updateddateutc: new Date().toISOString(),
       })
-      .select("contact_id, fname, sname, client_id, title, tel, mobile, email")
+      .select("contact_id, fname, sname, client_id, title, tel, mobile, email, active")
       .single()
 
     if (error) {

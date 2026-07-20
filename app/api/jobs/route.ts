@@ -50,9 +50,43 @@ export async function GET(req: NextRequest) {
 
   // Manual joins — collect unique IDs then fetch lookup tables
   const clientIds = [...new Set(jobs.map((j: { client_id: number }) => j.client_id).filter(Boolean))]
-  const contactIds = [...new Set(jobs.map((j: { contact_id: number }) => j.contact_id).filter(Boolean))]
   const jobTypeIds = [...new Set(jobs.map((j: { job_type_id: number }) => j.job_type_id).filter(Boolean))]
   const jobClassIds = [...new Set(jobs.map((j: { job_class_id: number }) => j.job_class_id).filter(Boolean))]
+  const fallbackEnquiryIds = [
+    ...new Set(
+      jobs
+        .filter((j: { contact_id: number }) => !j.contact_id)
+        .map((j: { enquiry_id: number }) => j.enquiry_id)
+    ),
+  ]
+
+  const { data: jobContacts, error: jobContactsError } = fallbackEnquiryIds.length
+    ? await supabase
+        .from("jobcontacts")
+        .select("id, enquiry_id, contact_id")
+        .in("enquiry_id", fallbackEnquiryIds)
+        .order("id", { ascending: true })
+    : { data: [], error: null }
+
+  if (jobContactsError) {
+    return Response.json({ error: jobContactsError.message }, { status: 500 })
+  }
+
+  const primaryContactIdByEnquiry = new Map<number, number>()
+  for (const jobContact of jobContacts || []) {
+    // Skip rows with no contact so an earlier null row can't mask a later valid one
+    if (!jobContact.contact_id) continue
+    if (!primaryContactIdByEnquiry.has(jobContact.enquiry_id)) {
+      primaryContactIdByEnquiry.set(jobContact.enquiry_id, jobContact.contact_id)
+    }
+  }
+
+  const contactIds = [
+    ...new Set([
+      ...jobs.map((j: { contact_id: number }) => j.contact_id).filter(Boolean),
+      ...primaryContactIdByEnquiry.values(),
+    ].filter(Boolean)),
+  ]
 
   const [clientsRes, contactsRes, typesRes, classesRes] = await Promise.all([
     clientIds.length ? supabase.from("clients").select("client_id, business_name").in("client_id", clientIds) : { data: [] },
@@ -68,13 +102,17 @@ export async function GET(req: NextRequest) {
   const classMap = Object.fromEntries((classesRes.data || []).map((c: { job_class_id: number; job_class: string }) => [c.job_class_id, c]))
 
   // Merge lookups into jobs
-  const data = jobs.map((job: { client_id: number; contact_id: number; job_type_id: number; job_class_id: number }) => ({
-    ...job,
-    clients: clientMap[job.client_id] ?? null,
-    contacts: contactMap[job.contact_id] ?? null,
-    job_types: typeMap[job.job_type_id] ?? null,
-    job_classes: classMap[job.job_class_id] ?? null,
-  }))
+  const data = jobs.map((job: { enquiry_id: number; client_id: number; contact_id: number; job_type_id: number; job_class_id: number }) => {
+    const contactId = job.contact_id || primaryContactIdByEnquiry.get(job.enquiry_id)
+
+    return {
+      ...job,
+      clients: clientMap[job.client_id] ?? null,
+      contacts: contactId ? contactMap[contactId] ?? null : null,
+      job_types: typeMap[job.job_type_id] ?? null,
+      job_classes: classMap[job.job_class_id] ?? null,
+    }
+  })
 
   return Response.json({ data, count, page, pageSize })
 }
