@@ -2,9 +2,19 @@
 
 import { Navigation } from "@/components/navigation"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, MapPin, Calendar, PoundSterling, User, Building2, Phone, Mail, FileText, Clock } from "lucide-react"
+import { ArrowLeft, MapPin, Calendar, PoundSterling, User, Building2, Phone, Mail, FileText, Clock, Pencil, Plus, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Job {
@@ -79,6 +89,7 @@ interface JobContact {
 }
 
 interface Event {
+  id: number
   task_id: number
   task_name: string
   date: string
@@ -90,6 +101,38 @@ interface Event {
   invoicable: boolean
   eventtype: string
   warranty: boolean
+}
+
+interface EventForm {
+  task_name: string
+  date: string
+  start_date: string
+  eventtype: string
+  resource: string
+  man_days: string
+  invoice_value: string
+  invoicable: boolean
+  completed: boolean
+  warranty: boolean
+}
+
+// The date columns arrive as ISO timestamps ("2013-07-01T00:00:00"); an
+// <input type="date"> needs a bare "YYYY-MM-DD".
+function toDateInput(val: string | null): string {
+  if (!val) return ""
+  return val.slice(0, 10)
+}
+
+const BLANK_EVENT_FORM: EventForm = {
+  task_name: "", date: "", start_date: "", eventtype: "", resource: "",
+  man_days: "", invoice_value: "", invoicable: false, completed: false, warranty: false,
+}
+
+// The API returns events ordered by date ascending; keep the local list in the
+// same order after add/edit. ISO date strings sort lexically = chronologically;
+// blank dates sort last.
+function byDate(a: Event, b: Event) {
+  return (a.date || "￿").localeCompare(b.date || "￿")
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -138,6 +181,86 @@ export default function JobDetailPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<Event | null>(null)
+  const [form, setForm] = useState<EventForm>(BLANK_EVENT_FORM)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const [pendingDelete, setPendingDelete] = useState<Event | null>(null)
+  const [rowBusy, setRowBusy] = useState<number | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  function openAdd() {
+    setEditing(null)
+    setForm(BLANK_EVENT_FORM)
+    setFormError(null)
+    setDialogOpen(true)
+  }
+
+  function openEdit(event: Event) {
+    setEditing(event)
+    setForm({
+      task_name: event.task_name ?? "",
+      date: toDateInput(event.date),
+      start_date: toDateInput(event.start_date),
+      eventtype: event.eventtype ?? "",
+      resource: event.resource ?? "",
+      man_days: event.man_days == null ? "" : String(event.man_days),
+      invoice_value: event.invoice_value == null ? "" : String(event.invoice_value),
+      invoicable: !!event.invoicable,
+      completed: !!event.completed,
+      warranty: !!event.warranty,
+    })
+    setFormError(null)
+    setDialogOpen(true)
+  }
+
+  async function saveEvent() {
+    if (!job) return
+    setSaving(true)
+    setFormError(null)
+    try {
+      const res = await fetch(editing ? `/api/events/${editing.id}` : "/api/events", {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editing ? form : { ...form, enquiry_id: job.enquiry_id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to save event")
+      setEvents(evs => {
+        const next = editing
+          ? evs.map(e => (e.id === editing.id ? data.event : e))
+          : [...evs, data.event]
+        return next.sort(byDate)
+      })
+      setDialogOpen(false)
+      setEditing(null)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to save event")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function confirmDelete() {
+    const target = pendingDelete
+    if (!target) return
+    setRowBusy(target.id)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/events/${target.id}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to delete event")
+      setEvents(evs => evs.filter(e => e.id !== target.id))
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete event")
+    } finally {
+      setRowBusy(null)
+      setPendingDelete(null)
+    }
+  }
 
   useEffect(() => {
     async function fetchJob() {
@@ -377,11 +500,19 @@ export default function JobDetailPage() {
 
         {/* Events Section */}
         <div className="rounded-lg border border-border bg-card">
-          <div className="px-4 py-3 border-b border-border">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-card-foreground flex items-center gap-2">
               <Clock className="h-4 w-4" /> Events ({events.length})
             </h2>
+            <Button size="sm" className="h-8 px-2" onClick={openAdd}>
+              <Plus className="h-4 w-4 mr-1" /> Add event
+            </Button>
           </div>
+          {actionError && (
+            <div className="mx-4 mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {actionError}
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -394,12 +525,13 @@ export default function JobDetailPage() {
                   <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Value</th>
                   <th className="px-3 py-2 text-center font-semibold text-muted-foreground">Billable</th>
                   <th className="px-3 py-2 text-center font-semibold text-muted-foreground">Done</th>
+                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {events.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
                       No events recorded
                     </td>
                   </tr>
@@ -438,6 +570,20 @@ export default function JobDetailPage() {
                           <span className="inline-block w-4 h-4 rounded-full bg-gray-300" title="Pending" />
                         )}
                       </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(event)}>
+                            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                          </Button>
+                          <Button
+                            variant="ghost" size="sm" disabled={rowBusy === event.id}
+                            className="h-7 px-2 text-destructive hover:text-destructive"
+                            onClick={() => { setActionError(null); setPendingDelete(event) }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -446,6 +592,108 @@ export default function JobDetailPage() {
           </div>
         </div>
       </main>
+
+      <Dialog open={dialogOpen} onOpenChange={o => { if (!o) { setDialogOpen(false); setEditing(null) } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Edit event" : "Add event"}</DialogTitle>
+            <DialogDescription>
+              {editing ? "Update this event's details." : "Add a new event to this job."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 py-1">
+            <div className="grid gap-1.5">
+              <Label htmlFor="task_name">Task</Label>
+              <Input id="task_name" value={form.task_name}
+                onChange={e => setForm(f => ({ ...f, task_name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="date">Date</Label>
+                <Input id="date" type="date" value={form.date}
+                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="start_date">Start date</Label>
+                <Input id="start_date" type="date" value={form.start_date}
+                  onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="eventtype">Type</Label>
+                <Input id="eventtype" value={form.eventtype}
+                  onChange={e => setForm(f => ({ ...f, eventtype: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="resource">Resource</Label>
+                <Input id="resource" value={form.resource}
+                  onChange={e => setForm(f => ({ ...f, resource: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="man_days">Days</Label>
+                <Input id="man_days" type="number" step="any" value={form.man_days}
+                  onChange={e => setForm(f => ({ ...f, man_days: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="invoice_value">Value (£)</Label>
+                <Input id="invoice_value" type="number" step="any" value={form.invoice_value}
+                  onChange={e => setForm(f => ({ ...f, invoice_value: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
+              <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                <Checkbox checked={form.invoicable}
+                  onCheckedChange={v => setForm(f => ({ ...f, invoicable: v === true }))} />
+                Billable
+              </label>
+              <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                <Checkbox checked={form.completed}
+                  onCheckedChange={v => setForm(f => ({ ...f, completed: v === true }))} />
+                Completed
+              </label>
+              <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                <Checkbox checked={form.warranty}
+                  onCheckedChange={v => setForm(f => ({ ...f, warranty: v === true }))} />
+                Warranty
+              </label>
+            </div>
+          </div>
+
+          {formError && <p className="text-sm text-destructive">{formError}</p>}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditing(null) }} disabled={saving}>Cancel</Button>
+            <Button onClick={saveEvent} disabled={saving}>
+              {saving ? "Saving…" : editing ? "Save changes" : "Add event"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={o => { if (!o) setPendingDelete(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this event?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete?.task_name ? `"${pendingDelete.task_name}"` : "This event"} will be permanently
+              removed from the job. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

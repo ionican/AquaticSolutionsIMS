@@ -15,3 +15,8 @@ node_modules
 .next/
 .DS_Store
 tsconfig.tsbuildinfo
+
+# Claude Code local scaffolding — embedded worktrees & machine-specific config
+.claude/worktrees/
+.claude/launch.json
+.claude/settings.local.json
