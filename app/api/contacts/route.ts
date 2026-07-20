@@ -2,6 +2,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { fetchAllPages } from "@/lib/supabase-pagination"
 import { NextRequest } from "next/server"
 
+// This app only ever handles Aquatic Solutions (Strettons) data.
+const COMPANY_ID = 6
+
 interface Contact {
   contact_id: number
   fname: string | null
@@ -24,6 +27,25 @@ export async function GET(req: NextRequest) {
   const statusParam = searchParams.get("status")
   const status = statusParam === "all" || statusParam === "inactive" ? statusParam : "active"
 
+  // Strettons-only, always: a contact is in scope only if its client is a
+  // company-6 client. This filters out the ~5k contacts left in the DB from the
+  // original unfiltered import (other-company clients that were never brought
+  // across) so no consumer — management page or New Job selector — can pick them.
+  const clientsRes = await fetchAllPages<{ client_id: number }>((from, to) =>
+    supabase
+      .from("clients")
+      .select("client_id")
+      .eq("company_id", COMPANY_ID)
+      .order("client_id")
+      .range(from, to)
+  )
+
+  if (clientsRes.error) {
+    return Response.json({ error: clientsRes.error.message }, { status: 500 })
+  }
+
+  const companyClientIds = new Set((clientsRes.data || []).map(c => c.client_id))
+
   const { data, error } = await fetchAllPages<Contact>((from, to) => {
     let query = supabase
       .from("contacts")
@@ -44,7 +66,9 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: error.message }, { status: 500 })
   }
 
-  return Response.json({ contacts: data || [] })
+  const scoped = (data || []).filter(c => companyClientIds.has(c.client_id))
+
+  return Response.json({ contacts: scoped })
 }
 
 export async function POST(req: NextRequest) {

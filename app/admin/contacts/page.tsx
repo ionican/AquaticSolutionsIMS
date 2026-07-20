@@ -117,10 +117,6 @@ export default function ManageContactsPage() {
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active")
-  // "scoped" (default) shows only contacts linked to a Strettons (company-6)
-  // client; "all" reveals the ~5k contacts imported for other companies whose
-  // client was never brought across (they render with an unresolved #id).
-  const [scopeFilter, setScopeFilter] = useState<"scoped" | "all">("scoped")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
 
@@ -166,12 +162,13 @@ export default function ManageContactsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setPage(1) }, [search, statusFilter, scopeFilter, pageSize])
+  useEffect(() => { setPage(1) }, [search, statusFilter, pageSize])
 
+  // The /api/contacts endpoint already returns only Strettons (company-6)
+  // contacts, so this just applies the status filter and search.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return contacts.filter(c => {
-      if (scopeFilter === "scoped" && !clientName.has(c.client_id)) return false
       if (statusFilter === "active" && !isActive(c)) return false
       if (statusFilter === "inactive" && isActive(c)) return false
       if (!q) return true
@@ -181,7 +178,7 @@ export default function ManageContactsPage() {
         (clientName.get(c.client_id) ?? "").toLowerCase().includes(q)
       )
     })
-  }, [contacts, search, statusFilter, scopeFilter, clientName])
+  }, [contacts, search, statusFilter, clientName])
 
   const total = filtered.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -337,14 +334,6 @@ export default function ManageContactsPage() {
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
               <SelectItem value="all">All statuses</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={scopeFilter} onValueChange={v => setScopeFilter(v as "scoped" | "all")}>
-            <SelectTrigger className="h-9 w-48 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="scoped">Strettons clients only</SelectItem>
-              <SelectItem value="all">All imported contacts</SelectItem>
             </SelectContent>
           </Select>
         </div>
