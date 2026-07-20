@@ -5,6 +5,33 @@ interface TableConfig {
   selectedColumns: string[]
 }
 
+// Every imported table MUST be scoped to Aquatic Solutions (company_id = 6).
+// Tables with a real company_id filter on it directly; relationship tables that
+// lack a reliable company_id are scoped through their parent, so contacts and
+// job-contacts belonging to other companies never come across. Returns the SQL
+// WHERE fragment for the given source table, or null when no scoping applies
+// (e.g. a lookup table without a company_id column).
+const COMPANY_ID = 6
+
+function companyScopeSql(
+  sourceTable: string,
+  columns: Array<{ COLUMN_NAME: string }>
+): string | null {
+  // Ebsford_Contacts has no company_id — scope via its client.
+  if (sourceTable === "Ebsford_Contacts") {
+    return `[client_id] IN (SELECT [client_id] FROM [Ebsford_Clients] WHERE [company_id] = ${COMPANY_ID})`
+  }
+  // JobContacts carries a company_id but it is unreliable (null in the source),
+  // so scope via the parent job's enquiry instead of an unusable = 6 filter.
+  if (sourceTable === "JobContacts") {
+    return `[enquiry_id] IN (SELECT [enquiry_id] FROM [Jobs] WHERE [company_id] = ${COMPANY_ID})`
+  }
+  const companyIdColumn = columns.find(
+    (col) => col.COLUMN_NAME.toLowerCase() === "company_id"
+  )
+  return companyIdColumn ? `[${companyIdColumn.COLUMN_NAME}] = ${COMPANY_ID}` : null
+}
+
 export async function POST(request: Request) {
   const server = process.env.AZURE_SQL_SERVER
   const database = process.env.AZURE_SQL_DATABASE
@@ -148,28 +175,24 @@ export async function POST(request: Request) {
             }
 
             // Check if table has audit trail columns (Superceded)
-            const hasAuditTrail = allColumns.some((col: any) => 
+            const hasAuditTrail = allColumns.some((col: any) =>
               col.COLUMN_NAME === 'Superceded'
             )
-            
-            // Check if table has company_id column (case-insensitive check)
-            const companyIdColumn = allColumns.find((col: any) => 
-              col.COLUMN_NAME.toLowerCase() === 'company_id'
-            )
 
-            // Build data query - filter for current records if audit trail exists
-            // Also filter by company_id = 6 if the column exists
+            // Build data query - filter for current records if audit trail exists.
+            // INVARIANT: every table is scoped to company 6 (Aquatic Solutions).
             let dataQuery = `SELECT ${selectedColumns.map((col: string) => `[${col}]`).join(', ')} FROM [${tableName}]`
             const whereConditions: string[] = []
-            
+
             if (hasAuditTrail) {
               whereConditions.push('Superceded IS NULL')
             }
-            
-            if (companyIdColumn) {
-              whereConditions.push(`[${companyIdColumn.COLUMN_NAME}] = 6`)
+
+            const companyScope = companyScopeSql(tableName, allColumns)
+            if (companyScope) {
+              whereConditions.push(companyScope)
             }
-            
+
             if (whereConditions.length > 0) {
               dataQuery += ` WHERE ${whereConditions.join(' AND ')}`
             }
