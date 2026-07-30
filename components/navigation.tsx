@@ -3,6 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
+import { BuildStamp } from "@/components/build-stamp"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -55,6 +56,7 @@ export function Navigation() {
               })}
             </div>
           </div>
+          <BuildStamp />
         </nav>
       </div>
     </header>
