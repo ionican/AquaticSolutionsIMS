@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+import { azureSqlVia, connectAzureSql } from "@/lib/azure-sql"
 
 interface TableConfig {
   name: string
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
   const password = process.env.AZURE_SQL_PASSWORD
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const via = azureSqlVia()
 
   if (!server || !database || !user || !password) {
     return new Response(
@@ -99,22 +101,9 @@ export async function POST(request: Request) {
       }
 
       try {
-        send({ type: "status", status: "connecting" })
+        send({ type: "status", status: "connecting", via })
 
-        const sql = await import("mssql")
-        
-        const config: sql.config = {
-          server,
-          database,
-          user,
-          password,
-          options: {
-            encrypt: true,
-            trustServerCertificate: false,
-          },
-        }
-
-        const pool = await sql.connect(config)
+        const client = await connectAzureSql()
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
         // Map table configs for quick lookup
@@ -141,7 +130,7 @@ export async function POST(request: Request) {
           'Ebsford_job_classes': 'job_classes',
         }
 
-        send({ type: "status", status: "migrating" })
+        send({ type: "status", status: "migrating", via: client.via })
 
         for (const tableName of MIGRATION_TABLES) {
           const targetTableName = TABLE_NAME_MAP[tableName] || tableName
@@ -149,7 +138,7 @@ export async function POST(request: Request) {
 
           try {
             // Get table schema - table name is from our controlled whitelist so safe to interpolate
-            const schemaResult = await pool.request().query(`
+            const schemaResult = await client.query(`
               SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
               FROM INFORMATION_SCHEMA.COLUMNS
               WHERE TABLE_NAME = '${tableName}'
@@ -222,7 +211,7 @@ export async function POST(request: Request) {
             // intact rather than truncating the table to nothing.
             console.log(`[v0] Fetching data from ${tableName}`)
 
-            const dataResult = await pool.request().query(dataQuery)
+            const dataResult = await client.query(dataQuery)
             const rows = dataResult.recordset
 
             // Tables are pre-created via Supabase migrations, so we just clear and insert data
@@ -291,7 +280,7 @@ export async function POST(request: Request) {
           }
         }
 
-        await pool.close()
+        await client.close()
         send({ type: "complete" })
       } catch (error) {
         console.error("[v0] Migration error:", error)

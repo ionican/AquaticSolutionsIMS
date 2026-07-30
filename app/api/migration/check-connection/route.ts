@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { azureSqlVia, connectAzureSql } from "@/lib/azure-sql"
 
 async function getServerIp() {
   try {
@@ -16,43 +17,31 @@ export async function GET() {
   const user = process.env.AZURE_SQL_USER
   const password = process.env.AZURE_SQL_PASSWORD
   const serverIp = await getServerIp()
+  const via = azureSqlVia()
 
   const configured = !!(server && database && user && password)
 
   if (!configured) {
-    return NextResponse.json({ configured: false })
+    return NextResponse.json({ configured: false, via })
   }
 
   // If configured, try to connect and list tables
   try {
-    const sql = await import("mssql")
-    
-    const config: sql.config = {
-      server: server!,
-      database: database!,
-      user: user!,
-      password: password!,
-      options: {
-        encrypt: true,
-        trustServerCertificate: false,
-      },
-    }
-
-    const pool = await sql.connect(config)
+    const client = await connectAzureSql()
     
     // Get list of user tables
-    const result = await pool.query`
+    const result = await client.query(`
       SELECT TABLE_NAME 
       FROM INFORMATION_SCHEMA.TABLES 
       WHERE TABLE_TYPE = 'BASE TABLE'
       ORDER BY TABLE_NAME
-    `
+    `)
     
-    await pool.close()
+    await client.close()
 
     const tables = result.recordset.map((row: { TABLE_NAME: string }) => row.TABLE_NAME)
 
-    return NextResponse.json({ configured: true, tables, serverIp })
+    return NextResponse.json({ configured: true, tables, serverIp, via: client.via })
   } catch (error) {
     console.error("Azure SQL connection error:", error)
     const message = error instanceof Error ? error.message : "Connection failed"
@@ -69,7 +58,8 @@ export async function GET() {
       server,
       database,
       user,
-      serverIp
+      serverIp,
+      via
     })
   }
 }

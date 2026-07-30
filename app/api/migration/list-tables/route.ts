@@ -1,16 +1,5 @@
 import { NextResponse } from "next/server"
-import sql from "mssql"
-
-const config: sql.config = {
-  server: process.env.AZURE_SQL_SERVER || "",
-  database: process.env.AZURE_SQL_DATABASE || "",
-  user: process.env.AZURE_SQL_USER || "",
-  password: process.env.AZURE_SQL_PASSWORD || "",
-  options: {
-    encrypt: true,
-    trustServerCertificate: false,
-  },
-}
+import { connectAzureSql } from "@/lib/azure-sql"
 
 // Tables to migrate from the legacy system
 const MIGRATION_TABLES = [
@@ -35,11 +24,11 @@ const TABLE_NAME_MAP: Record<string, string> = {
 
 export async function GET() {
   try {
-    const pool = await sql.connect(config)
+    const client = await connectAzureSql()
     
     // Get only the specific tables we need for migration
     const tableList = MIGRATION_TABLES.map(t => `'${t}'`).join(',')
-    const tablesResult = await pool.request().query(`
+    const tablesResult = await client.query(`
       SELECT 
         t.TABLE_NAME,
         t.TABLE_SCHEMA,
@@ -53,7 +42,7 @@ export async function GET() {
     // For each table, get columns and check for audit fields
     const tables = await Promise.all(
       tablesResult.recordset.map(async (table) => {
-        const columnsResult = await pool.request().query(`
+        const columnsResult = await client.query(`
           SELECT 
             COLUMN_NAME,
             DATA_TYPE,
@@ -80,7 +69,7 @@ export async function GET() {
         let currentRowCount = 0
         
         try {
-          const countResult = await pool.request().query(`
+          const countResult = await client.query(`
             SELECT COUNT(*) as total FROM [${table.TABLE_SCHEMA}].[${table.TABLE_NAME}]
           `)
           rowCount = countResult.recordset[0].total
@@ -89,7 +78,7 @@ export async function GET() {
             const supercededCol = columnNames.includes('superceded') ? 'Superceded' : 
                                   columnNames.includes('superseded') ? 'Superseded' : null
             if (supercededCol) {
-              const currentResult = await pool.request().query(`
+              const currentResult = await client.query(`
                 SELECT COUNT(*) as current FROM [${table.TABLE_SCHEMA}].[${table.TABLE_NAME}] WHERE ${supercededCol} IS NULL
               `)
               currentRowCount = currentResult.recordset[0].current
@@ -125,7 +114,7 @@ export async function GET() {
       })
     )
 
-    await pool.close()
+    await client.close()
 
     return NextResponse.json({ 
       success: true, 
