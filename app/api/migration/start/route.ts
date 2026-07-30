@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+import { azureSqlVia, connectAzureSql } from "@/lib/azure-sql"
 
 interface TableConfig {
   name: string
@@ -8,28 +9,57 @@ interface TableConfig {
 // Every imported table MUST be scoped to Aquatic Solutions (company_id = 6).
 // Tables with a real company_id filter on it directly; relationship tables that
 // lack a reliable company_id are scoped through their parent, so contacts and
-// job-contacts belonging to other companies never come across. Returns the SQL
-// WHERE fragment for the given source table, or null when no scoping applies
-// (e.g. a lookup table without a company_id column).
+// job-contacts belonging to other companies never come across.
+//
+// This fails CLOSED. A table with neither a company_id column nor a parent rule
+// throws rather than importing every company's rows — returning null in that case
+// is what let 5,242 out-of-scope contacts through before.
 const COMPANY_ID = 6
+
+// Relationship tables with no company_id of their own, scoped via their parent.
+//
+// The parent key MUST be globally unique, or `IN (...)` matches other companies'
+// rows that happen to reuse the same key value. JobContacts used to be scoped
+// here on enquiry_id — a smallint reused across companies, with no FK to Jobs —
+// which matched 6,101 rows of which 3,321 belonged to companies 5, 7 and 8. It
+// now takes the direct company_id filter below: that column is fully populated
+// in the source (0 nulls across 9,419 rows) and yields the correct 2,782.
+const PARENT_SCOPE_SQL: Record<string, string> = {
+  // Ebsford_Contacts has no company_id column at all. client_id is the primary
+  // key of Ebsford_Clients and carries a real FK, so it is globally unique.
+  Ebsford_Contacts: `[client_id] IN (SELECT [client_id] FROM [Ebsford_Clients] WHERE [company_id] = ${COMPANY_ID})`,
+}
+
+// Tables deliberately imported without a company filter. Adding one is a
+// conscious decision that it holds no company-specific rows — never a default.
+const UNSCOPED_TABLES = new Set<string>()
 
 function companyScopeSql(
   sourceTable: string,
   columns: Array<{ COLUMN_NAME: string }>
 ): string | null {
-  // Ebsford_Contacts has no company_id — scope via its client.
-  if (sourceTable === "Ebsford_Contacts") {
-    return `[client_id] IN (SELECT [client_id] FROM [Ebsford_Clients] WHERE [company_id] = ${COMPANY_ID})`
+  const parentScope = PARENT_SCOPE_SQL[sourceTable]
+  if (parentScope) {
+    return parentScope
   }
-  // JobContacts carries a company_id but it is unreliable (null in the source),
-  // so scope via the parent job's enquiry instead of an unusable = 6 filter.
-  if (sourceTable === "JobContacts") {
-    return `[enquiry_id] IN (SELECT [enquiry_id] FROM [Jobs] WHERE [company_id] = ${COMPANY_ID})`
-  }
+
   const companyIdColumn = columns.find(
     (col) => col.COLUMN_NAME.toLowerCase() === "company_id"
   )
-  return companyIdColumn ? `[${companyIdColumn.COLUMN_NAME}] = ${COMPANY_ID}` : null
+  if (companyIdColumn) {
+    return `[${companyIdColumn.COLUMN_NAME}] = ${COMPANY_ID}`
+  }
+
+  if (UNSCOPED_TABLES.has(sourceTable)) {
+    return null
+  }
+
+  throw new Error(
+    `Refusing to import ${sourceTable}: no company_id column and no parent scope ` +
+      `rule, so every company's rows would be imported. Add an entry to ` +
+      `PARENT_SCOPE_SQL, or to UNSCOPED_TABLES if the table genuinely holds no ` +
+      `company-specific data.`
+  )
 }
 
 export async function POST(request: Request) {
@@ -39,8 +69,11 @@ export async function POST(request: Request) {
   const password = process.env.AZURE_SQL_PASSWORD
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const via = azureSqlVia()
 
-  if (!server || !database || !user || !password) {
+  // Only the direct transport needs the four SQL credentials; a proxy-only
+  // deployment is valid because the Function holds them.
+  if (via === "direct" && (!server || !database || !user || !password)) {
     return new Response(
       JSON.stringify({ message: "Azure SQL connection not configured" }),
       { status: 400 }
@@ -70,22 +103,9 @@ export async function POST(request: Request) {
       }
 
       try {
-        send({ type: "status", status: "connecting" })
+        send({ type: "status", status: "connecting", via })
 
-        const sql = await import("mssql")
-        
-        const config: sql.config = {
-          server,
-          database,
-          user,
-          password,
-          options: {
-            encrypt: true,
-            trustServerCertificate: false,
-          },
-        }
-
-        const pool = await sql.connect(config)
+        const client = await connectAzureSql()
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
         // Map table configs for quick lookup
@@ -112,7 +132,7 @@ export async function POST(request: Request) {
           'Ebsford_job_classes': 'job_classes',
         }
 
-        send({ type: "status", status: "migrating" })
+        send({ type: "status", status: "migrating", via: client.via })
 
         for (const tableName of MIGRATION_TABLES) {
           const targetTableName = TABLE_NAME_MAP[tableName] || tableName
@@ -120,7 +140,7 @@ export async function POST(request: Request) {
 
           try {
             // Get table schema - table name is from our controlled whitelist so safe to interpolate
-            const schemaResult = await pool.request().query(`
+            const schemaResult = await client.query(`
               SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
               FROM INFORMATION_SCHEMA.COLUMNS
               WHERE TABLE_NAME = '${tableName}'
@@ -145,14 +165,41 @@ export async function POST(request: Request) {
               continue
             }
 
-            // Tables are pre-created via Supabase migrations, so we just clear and insert data
-            // First, clear existing data from the target table
+            // selectedColumns arrives in the POST body and is interpolated into
+            // dataQuery below, so it must be constrained to columns that actually
+            // exist in the source schema. Resolve each one to its canonical name
+            // from INFORMATION_SCHEMA and interpolate THAT, so no caller-supplied
+            // string ever reaches the SQL text; a value like
+            //   id] FROM [Jobs]; WAITFOR DELAY '00:00:05'; SELECT [id
+            // is rejected here rather than escaped.
+            const canonicalByLower = new Map(
+              allColumns.map((c: any) => [String(c.COLUMN_NAME).toLowerCase(), String(c.COLUMN_NAME)])
+            )
+            const unknownColumns = selectedColumns.filter(
+              (col: string) => !canonicalByLower.has(String(col).toLowerCase())
+            )
+
+            if (unknownColumns.length > 0) {
+              send({
+                type: "table",
+                table: targetTableName,
+                status: "error",
+                error: `Unknown column(s) for ${tableName}: ${unknownColumns.join(", ")}`
+              })
+              continue
+            }
+
+            const safeColumns = selectedColumns.map(
+              (col: string) => canonicalByLower.get(String(col).toLowerCase()) as string
+            )
+
             const postgresTableName = targetTableName.toLowerCase()
-            console.log(`[v0] Clearing existing data from ${postgresTableName}`)
-            
-            // Map tables to their primary key columns
+
+            // Must match the real primary key in Postgres. The dedup pass below
+            // guards this column, so a wrong entry lets a genuine PK violation
+            // reach the insert and throw mid-table. jobs is keyed on enquiry_id.
             const primaryKeyMap: Record<string, string> = {
-              'jobs': 'id',
+              'jobs': 'enquiry_id',
               'events': 'task_id',
               'clients': 'client_id',
               'contacts': 'contact_id',
@@ -161,18 +208,8 @@ export async function POST(request: Request) {
               'job_classes': 'job_class_id',
               'parameters': 'id',
             }
-            
+
             const pkColumn = primaryKeyMap[postgresTableName] || 'id'
-            
-            // Delete all rows using the correct primary key column
-            const { error: deleteError } = await supabase
-              .from(postgresTableName)
-              .delete()
-              .gte(pkColumn, 0)
-            
-            if (deleteError) {
-              console.log(`[v0] Delete error (may be empty table):`, deleteError.message)
-            }
 
             // Check if table has audit trail columns (Superceded)
             const hasAuditTrail = allColumns.some((col: any) =>
@@ -181,13 +218,15 @@ export async function POST(request: Request) {
 
             // Build data query - filter for current records if audit trail exists.
             // INVARIANT: every table is scoped to company 6 (Aquatic Solutions).
-            let dataQuery = `SELECT ${selectedColumns.map((col: string) => `[${col}]`).join(', ')} FROM [${tableName}]`
+            let dataQuery = `SELECT ${safeColumns.map((col: string) => `[${col}]`).join(', ')} FROM [${tableName}]`
             const whereConditions: string[] = []
 
             if (hasAuditTrail) {
               whereConditions.push('Superceded IS NULL')
             }
 
+            // Throws for an unscoped table. Deliberately evaluated before the
+            // delete below, so a scoping failure never empties the target.
             const companyScope = companyScopeSql(tableName, allColumns)
             if (companyScope) {
               whereConditions.push(companyScope)
@@ -197,10 +236,25 @@ export async function POST(request: Request) {
               dataQuery += ` WHERE ${whereConditions.join(' AND ')}`
             }
 
+            // Read the source BEFORE clearing the target. The clear/insert pair is
+            // not transactional, so a failed read must leave the existing rows
+            // intact rather than truncating the table to nothing.
             console.log(`[v0] Fetching data from ${tableName}`)
 
-            const dataResult = await pool.request().query(dataQuery)
+            const dataResult = await client.query(dataQuery)
             const rows = dataResult.recordset
+
+            // Tables are pre-created via Supabase migrations, so we just clear and insert data
+            console.log(`[v0] Clearing existing data from ${postgresTableName}`)
+
+            const { error: deleteError } = await supabase
+              .from(postgresTableName)
+              .delete()
+              .gte(pkColumn, 0)
+
+            if (deleteError) {
+              console.log(`[v0] Delete error (may be empty table):`, deleteError.message)
+            }
 
             if (rows.length > 0) {
               console.log(`[v0] Inserting ${rows.length} rows into ${postgresTableName}`)
@@ -256,7 +310,7 @@ export async function POST(request: Request) {
           }
         }
 
-        await pool.close()
+        await client.close()
         send({ type: "complete" })
       } catch (error) {
         console.error("[v0] Migration error:", error)
