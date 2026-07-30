@@ -19,7 +19,11 @@ export async function GET() {
   const serverIp = await getServerIp()
   const via = azureSqlVia()
 
-  const configured = !!(server && database && user && password)
+  // Either transport is sufficient. A proxy-only deployment is valid: the
+  // Function holds the SQL credentials, so the four direct vars need not be set
+  // here. Checking only those would report an unusable "not configured" while
+  // azureSqlVia() was already selecting a working proxy.
+  const configured = via === "proxy" || !!(server && database && user && password)
 
   if (!configured) {
     return NextResponse.json({ configured: false, via })

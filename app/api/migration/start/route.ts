@@ -71,7 +71,9 @@ export async function POST(request: Request) {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const via = azureSqlVia()
 
-  if (!server || !database || !user || !password) {
+  // Only the direct transport needs the four SQL credentials; a proxy-only
+  // deployment is valid because the Function holds them.
+  if (via === "direct" && (!server || !database || !user || !password)) {
     return new Response(
       JSON.stringify({ message: "Azure SQL connection not configured" }),
       { status: 400 }
@@ -163,6 +165,34 @@ export async function POST(request: Request) {
               continue
             }
 
+            // selectedColumns arrives in the POST body and is interpolated into
+            // dataQuery below, so it must be constrained to columns that actually
+            // exist in the source schema. Resolve each one to its canonical name
+            // from INFORMATION_SCHEMA and interpolate THAT, so no caller-supplied
+            // string ever reaches the SQL text; a value like
+            //   id] FROM [Jobs]; WAITFOR DELAY '00:00:05'; SELECT [id
+            // is rejected here rather than escaped.
+            const canonicalByLower = new Map(
+              allColumns.map((c: any) => [String(c.COLUMN_NAME).toLowerCase(), String(c.COLUMN_NAME)])
+            )
+            const unknownColumns = selectedColumns.filter(
+              (col: string) => !canonicalByLower.has(String(col).toLowerCase())
+            )
+
+            if (unknownColumns.length > 0) {
+              send({
+                type: "table",
+                table: targetTableName,
+                status: "error",
+                error: `Unknown column(s) for ${tableName}: ${unknownColumns.join(", ")}`
+              })
+              continue
+            }
+
+            const safeColumns = selectedColumns.map(
+              (col: string) => canonicalByLower.get(String(col).toLowerCase()) as string
+            )
+
             const postgresTableName = targetTableName.toLowerCase()
 
             // Must match the real primary key in Postgres. The dedup pass below
@@ -188,7 +218,7 @@ export async function POST(request: Request) {
 
             // Build data query - filter for current records if audit trail exists.
             // INVARIANT: every table is scoped to company 6 (Aquatic Solutions).
-            let dataQuery = `SELECT ${selectedColumns.map((col: string) => `[${col}]`).join(', ')} FROM [${tableName}]`
+            let dataQuery = `SELECT ${safeColumns.map((col: string) => `[${col}]`).join(', ')} FROM [${tableName}]`
             const whereConditions: string[] = []
 
             if (hasAuditTrail) {
