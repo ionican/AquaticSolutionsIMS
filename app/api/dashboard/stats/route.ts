@@ -1,6 +1,10 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
+import { requireApiUser } from "@/lib/auth"
 
 export async function GET() {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createSupabaseAdminClient()
 

@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
+import { requireApiUser } from "@/lib/auth"
 
 // Fields the management UI is allowed to edit. `contact_id` is immutable.
 const EDITABLE_FIELDS = [
@@ -17,6 +18,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const { id } = await params
   const contactId = parseInt(id)
@@ -73,6 +77,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const { id } = await params
   const contactId = parseInt(id)

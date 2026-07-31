@@ -2,9 +2,12 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import { LogOut } from "lucide-react"
 import { BuildStamp } from "@/components/build-stamp"
 import { cn } from "@/lib/utils"
+import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
+import { Button } from "@/components/ui/button"
 
 const navItems = [
   { href: "/", label: "Homepage" },
@@ -15,6 +18,14 @@ const navItems = [
 
 export function Navigation() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  async function handleSignOut() {
+    const supabase = createSupabaseBrowserClient()
+    await supabase.auth.signOut()
+    router.replace("/login")
+    router.refresh()
+  }
 
   return (
     <header className="border-b border-border bg-background">
@@ -56,7 +67,18 @@ export function Navigation() {
               })}
             </div>
           </div>
-          <BuildStamp />
+          <div className="flex items-center gap-2">
+            <BuildStamp />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSignOut}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Sign out</span>
+            </Button>
+          </div>
         </nav>
       </div>
     </header>

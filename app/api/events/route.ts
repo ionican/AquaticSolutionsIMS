@@ -1,8 +1,12 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { coerceEventFields } from "@/lib/event-fields"
 import { NextRequest } from "next/server"
+import { requireApiUser } from "@/lib/auth"
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const body = await req.json()
 

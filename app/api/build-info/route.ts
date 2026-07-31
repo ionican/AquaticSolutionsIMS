@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { BUILD_PR_LIMIT, selectBuildPrs, parseBuildTime, type BuildInfo } from "@/lib/build-info"
+import { requireApiUser } from "@/lib/auth"
 
 // Always execute so the response reflects the running build rather than a
 // snapshot frozen at prerender. GitHub traffic is capped by the fetch-level
@@ -15,6 +16,9 @@ const PULLS_URL =
 const REVALIDATE_SECONDS = 3600
 
 export async function GET() {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || ""
   const commitSha = process.env.NEXT_PUBLIC_COMMIT_SHA || ""
 

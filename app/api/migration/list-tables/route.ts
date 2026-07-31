@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { connectAzureSql } from "@/lib/azure-sql"
+import { requireApiUser } from "@/lib/auth"
 
 // Tables to migrate from the legacy system
 const MIGRATION_TABLES = [
@@ -23,6 +24,9 @@ const TABLE_NAME_MAP: Record<string, string> = {
 }
 
 export async function GET() {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const client = await connectAzureSql()
     

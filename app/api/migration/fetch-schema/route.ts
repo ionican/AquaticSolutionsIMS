@@ -1,4 +1,5 @@
 import { connectAzureSql } from "@/lib/azure-sql"
+import { requireApiUser } from "@/lib/auth"
 
 // Tables to migrate from the legacy system
 const MIGRATION_TABLES = [
@@ -84,6 +85,9 @@ function mapSqlServerTypeToPostgres(sqlType: string, maxLength: number | null, p
 }
 
 export async function GET() {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const client = await connectAzureSql()
     

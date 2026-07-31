@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
+import { requireApiUser } from "@/lib/auth"
 
 // Tables allowed to be queried
 const ALLOWED_TABLES = [
@@ -16,6 +17,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ tableName: string }> }
 ) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createSupabaseAdminClient()
     const { tableName } = await params
