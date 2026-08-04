@@ -23,6 +23,11 @@ const adminOptions = [
     href: "/admin/contacts",
   },
   {
+    title: "Manage Users",
+    description: "Add users and remove access",
+    href: "/admin/users",
+  },
+  {
     title: "Settings",
     description: "Configure system settings",
     href: "/admin/settings",
