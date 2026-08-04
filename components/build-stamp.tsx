@@ -92,11 +92,14 @@ export function BuildStamp() {
           aria-label={triggerLabel}
           className="group inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted data-[state=open]:text-foreground"
         >
+          {/* The timezone is stated on the trigger itself, not just in the
+              popover: the stamp is read at a glance to tell builds apart, and
+              an unlabelled time invites reading it as local. */}
           <span className="hidden sm:inline" aria-hidden="true">
-            Build {buildDate ? formatStamp(buildDate) : "unknown"}
+            {buildDate ? `Build ${formatStamp(buildDate)} UTC` : "Build unknown"}
           </span>
           <span className="sm:hidden" aria-hidden="true">
-            Build {buildDate ? formatStampShort(buildDate) : "unknown"}
+            {buildDate ? `Build ${formatStampShort(buildDate)} UTC` : "Build unknown"}
           </span>
           <ChevronDown
             className="size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
