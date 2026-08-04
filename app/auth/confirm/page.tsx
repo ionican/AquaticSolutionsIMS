@@ -51,13 +51,7 @@ function ConfirmForm() {
         const tokenHash = searchParams.get("token_hash")
         const code = searchParams.get("code")
 
-        if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          })
-          if (error) throw error
-        } else if (tokenHash) {
+        if (tokenHash) {
           const type = (searchParams.get("type") ?? "recovery") as
             | "invite"
             | "recovery"
@@ -67,30 +61,43 @@ function ConfirmForm() {
             token_hash: tokenHash,
           })
           if (error) throw error
-        } else if (code) {
-          // Same-browser-only fallback: a ?code= link needs the PKCE verifier
-          // stored by the browser that requested the email. The templates
-          // should use token_hash links precisely so this path is never hit.
-          const { error } = await supabase.auth.exchangeCodeForSession(code)
-          if (error) {
-            if (/code verifier/i.test(error.message)) {
-              throw new Error(
-                "This link only works in the browser the reset was requested from. " +
-                  "Request a new link below and open it on this device."
-              )
-            }
-            throw error
-          }
         } else {
-          // No token at all — likely an existing session (e.g. page reload
-          // after verification). Only proceed if one exists.
+          // The client constructor auto-processes ?code= and #access_token
+          // URLs itself (detectSessionInUrl), consuming the one-time code and
+          // PKCE verifier. getSession() awaits that initialisation, so check
+          // its result BEFORE any manual redemption — a second exchange of an
+          // already-consumed code fails with "verifier not found" even in the
+          // requesting browser, which is how Tom's same-browser reset broke.
           const {
-            data: { user },
-          } = await supabase.auth.getUser()
-          if (!user) {
-            setErrorMessage("This link is invalid or has already been used.")
-            setPhase("error")
-            return
+            data: { session },
+          } = await supabase.auth.getSession()
+
+          if (!session) {
+            if (accessToken && refreshToken) {
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              })
+              if (error) throw error
+            } else if (code) {
+              // Reached only when auto-detection didn't run (no stored
+              // verifier): a ?code= link opened outside the requesting
+              // browser. token_hash email templates avoid this path entirely.
+              const { error } = await supabase.auth.exchangeCodeForSession(code)
+              if (error) {
+                if (/code verifier/i.test(error.message)) {
+                  throw new Error(
+                    "This link only works in the browser the reset was requested from. " +
+                      "Request a new link below and open it on this device."
+                  )
+                }
+                throw error
+              }
+            } else {
+              setErrorMessage("This link is invalid or has already been used.")
+              setPhase("error")
+              return
+            }
           }
         }
 
