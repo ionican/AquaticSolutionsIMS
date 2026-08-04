@@ -3,41 +3,41 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Dark slate/teal theme - professional project management */
+/* Light teal theme — Aquatic Solutions IMS (from design mockups) */
 :root {
-  --background: oklch(0.16 0.014 240);
-  --foreground: oklch(0.95 0.01 220);
-  --card: oklch(0.20 0.016 240);
-  --card-foreground: oklch(0.95 0.01 220);
-  --popover: oklch(0.18 0.015 240);
-  --popover-foreground: oklch(0.95 0.01 220);
-  --primary: oklch(0.72 0.14 180);
-  --primary-foreground: oklch(0.14 0.02 240);
-  --secondary: oklch(0.25 0.02 240);
-  --secondary-foreground: oklch(0.90 0.01 220);
-  --muted: oklch(0.24 0.018 240);
-  --muted-foreground: oklch(0.65 0.02 220);
-  --accent: oklch(0.72 0.14 180);
-  --accent-foreground: oklch(0.14 0.02 240);
-  --destructive: oklch(0.60 0.20 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.30 0.02 240);
-  --input: oklch(0.25 0.018 240);
-  --ring: oklch(0.72 0.14 180);
-  --chart-1: oklch(0.72 0.14 180);
-  --chart-2: oklch(0.65 0.15 280);
-  --chart-3: oklch(0.70 0.18 60);
-  --chart-4: oklch(0.60 0.20 25);
-  --chart-5: oklch(0.55 0.12 140);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.14 0.012 240);
-  --sidebar-foreground: oklch(0.95 0.01 220);
-  --sidebar-primary: oklch(0.72 0.14 180);
-  --sidebar-primary-foreground: oklch(0.14 0.02 240);
-  --sidebar-accent: oklch(0.25 0.02 240);
-  --sidebar-accent-foreground: oklch(0.90 0.01 220);
-  --sidebar-border: oklch(0.30 0.02 240);
-  --sidebar-ring: oklch(0.72 0.14 180);
+  --background: #f5f7f8;
+  --foreground: #0f1b24;
+  --card: #ffffff;
+  --card-foreground: #0f1b24;
+  --popover: #ffffff;
+  --popover-foreground: #0f1b24;
+  --primary: #16aebd;
+  --primary-foreground: #ffffff;
+  --secondary: #eef1f4;
+  --secondary-foreground: #41525e;
+  --muted: #eef1f3;
+  --muted-foreground: #6b7a85;
+  --accent: #e0f3f5;
+  --accent-foreground: #0a7782;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --border: #e7eaed;
+  --input: #e7eaed;
+  --ring: #16aebd;
+  --chart-1: #16aebd;
+  --chart-2: #3dbcc9;
+  --chart-3: #0e7490;
+  --chart-4: #f59e0b;
+  --chart-5: #7b61c9;
+  --radius: 0.75rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f1b24;
+  --sidebar-primary: #16aebd;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef1f4;
+  --sidebar-accent-foreground: #41525e;
+  --sidebar-border: #e7eaed;
+  --sidebar-ring: #16aebd;
 }
 
 @theme inline {
