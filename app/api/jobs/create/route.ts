@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
+import { requireApiUser } from "@/lib/auth"
 
 interface JobContactInput {
   contact_id?: string | number | null
@@ -31,6 +32,9 @@ function buildJobContactRows(jobContacts: unknown, enquiryId: number) {
 }
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createSupabaseAdminClient()
     const body = await req.json()

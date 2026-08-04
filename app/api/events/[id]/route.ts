@@ -1,11 +1,15 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { coerceEventFields } from "@/lib/event-fields"
 import { NextRequest } from "next/server"
+import { requireApiUser } from "@/lib/auth"
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const { id } = await params
   const eventId = parseInt(id)
@@ -55,6 +59,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const { id } = await params
   const eventId = parseInt(id)

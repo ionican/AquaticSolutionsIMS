@@ -1,15 +1,5 @@
-import sql from 'mssql'
-
-const config: sql.config = {
-  server: process.env.AZURE_SQL_SERVER || '',
-  database: process.env.AZURE_SQL_DATABASE || '',
-  user: process.env.AZURE_SQL_USER || '',
-  password: process.env.AZURE_SQL_PASSWORD || '',
-  options: {
-    encrypt: true,
-    trustServerCertificate: false,
-  },
-}
+import { connectAzureSql } from "@/lib/azure-sql"
+import { requireApiUser } from "@/lib/auth"
 
 // Tables to migrate from the legacy system
 const MIGRATION_TABLES = [
@@ -95,8 +85,11 @@ function mapSqlServerTypeToPostgres(sqlType: string, maxLength: number | null, p
 }
 
 export async function GET() {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
-    const pool = await sql.connect(config)
+    const client = await connectAzureSql()
     
     const tables: Array<{
       name: string
@@ -116,8 +109,7 @@ export async function GET() {
     
     for (const tableName of MIGRATION_TABLES) {
       // Get column information - table name is from our controlled whitelist so safe to interpolate
-      const columnsResult = await pool.request()
-        .query(`
+      const columnsResult = await client.query(`
           SELECT 
             c.COLUMN_NAME,
             c.DATA_TYPE,
@@ -164,11 +156,11 @@ export async function GET() {
       let currentRowCount = 0
       
       try {
-        const totalCountResult = await pool.request().query(`SELECT COUNT(*) as cnt FROM [${tableName}]`)
+        const totalCountResult = await client.query(`SELECT COUNT(*) as cnt FROM [${tableName}]`)
         totalRowCount = totalCountResult.recordset[0].cnt
         
         if (hasAuditTrail) {
-          const currentCountResult = await pool.request().query(`SELECT COUNT(*) as cnt FROM [${tableName}] WHERE Superceded IS NULL`)
+          const currentCountResult = await client.query(`SELECT COUNT(*) as cnt FROM [${tableName}] WHERE Superceded IS NULL`)
           currentRowCount = currentCountResult.recordset[0].cnt
         } else {
           currentRowCount = totalRowCount
@@ -214,7 +206,7 @@ export async function GET() {
       })
     }
     
-    await pool.close()
+    await client.close()
     
     const combinedSQL = tables.map(t => `-- Table: ${t.name}\n${t.createTableSQL}`).join('\n\n')
     console.log('[v0] Combined SQL for migration:\n', combinedSQL)
