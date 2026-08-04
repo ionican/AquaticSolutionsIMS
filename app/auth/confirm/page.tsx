@@ -68,8 +68,19 @@ function ConfirmForm() {
           })
           if (error) throw error
         } else if (code) {
+          // Same-browser-only fallback: a ?code= link needs the PKCE verifier
+          // stored by the browser that requested the email. The templates
+          // should use token_hash links precisely so this path is never hit.
           const { error } = await supabase.auth.exchangeCodeForSession(code)
-          if (error) throw error
+          if (error) {
+            if (/code verifier/i.test(error.message)) {
+              throw new Error(
+                "This link only works in the browser the reset was requested from. " +
+                  "Request a new link below and open it on this device."
+              )
+            }
+            throw error
+          }
         } else {
           // No token at all — likely an existing session (e.g. page reload
           // after verification). Only proceed if one exists.
