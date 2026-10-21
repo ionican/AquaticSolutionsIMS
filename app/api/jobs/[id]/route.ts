@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
+import { requireApiUser } from "@/lib/auth"
 
 interface JobContactInput {
   contact_id?: string | number | null
@@ -34,6 +35,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const { id } = await params
   const jobId = parseInt(id)
@@ -120,6 +124,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const { id } = await params
   const jobId = parseInt(id)

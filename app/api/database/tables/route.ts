@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
+import { requireApiUser } from "@/lib/auth"
 
 // Tables to show in the database overview (excluding system tables)
 const APP_TABLES = [
@@ -13,6 +14,9 @@ const APP_TABLES = [
 ]
 
 export async function GET() {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createSupabaseAdminClient()
     const tables = []

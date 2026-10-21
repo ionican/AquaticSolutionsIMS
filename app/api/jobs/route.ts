@@ -1,7 +1,11 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest } from "next/server"
+import { requireApiUser } from "@/lib/auth"
 
 export async function GET(req: NextRequest) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

@@ -3,8 +3,11 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
-import { Search } from "lucide-react"
+import { LogOut, Search } from "lucide-react"
+import { BuildStamp } from "@/components/build-stamp"
 import { cn } from "@/lib/utils"
+import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
+import { Button } from "@/components/ui/button"
 
 const navItems = [
   { href: "/", label: "Home" },
@@ -30,6 +33,13 @@ export function Navigation() {
     // For now the search box jumps to the Jobs list; wiring the term through
     // to the jobs filters comes in a later step.
     router.push("/jobs")
+  }
+
+  async function handleSignOut() {
+    const supabase = createSupabaseBrowserClient()
+    await supabase.auth.signOut()
+    router.replace("/login")
+    router.refresh()
   }
 
   return (
@@ -90,6 +100,18 @@ export function Navigation() {
             <span className="grid size-[30px] place-items-center rounded-full bg-primary text-[0.72rem] font-bold text-white">
               TS
             </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <BuildStamp />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSignOut}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Sign out</span>
+            </Button>
           </div>
         </nav>
       </div>

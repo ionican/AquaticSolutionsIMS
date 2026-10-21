@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { fetchAllPages } from "@/lib/supabase-pagination"
 import { NextRequest } from "next/server"
+import { requireApiUser } from "@/lib/auth"
 
 interface Client {
   client_id: number
@@ -30,6 +31,9 @@ function resolveStatus(req: NextRequest): StatusFilter {
 }
 
 export async function GET(req: NextRequest) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   const supabase = createSupabaseAdminClient()
   const status = resolveStatus(req)
 
@@ -76,6 +80,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createSupabaseAdminClient()
     const body = await req.json()

@@ -1,6 +1,10 @@
 import { createSupabaseAnonClient } from "@/lib/supabase-server"
+import { requireApiUser } from "@/lib/auth"
 
 export async function GET(request: Request) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createSupabaseAnonClient()
     const { searchParams } = new URL(request.url)
@@ -26,6 +30,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser()
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createSupabaseAnonClient()
     const { tableName, columns } = await request.json()
