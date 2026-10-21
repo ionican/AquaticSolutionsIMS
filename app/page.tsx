@@ -1,6 +1,7 @@
 "use client"
 
 import { Navigation } from "@/components/navigation"
+import { useRole } from "@/components/role-provider"
 import { Plus, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -86,6 +87,7 @@ const thBase =
 
 export default function HomePage() {
   const router = useRouter()
+  const { can } = useRole()
   const [stats, setStats] = useState<Stats | null>(null)
   const [rti, setRti] = useState<{ count: number; totalValue: number; data: RtiRow[] } | null>(null)
   const [recent, setRecent] = useState<Job[]>([])
@@ -149,18 +151,22 @@ export default function HomePage() {
             <p className="mt-1.5 text-[0.9rem] text-muted-foreground">{subline}</p>
           </div>
           <div className="flex shrink-0 gap-2.5">
-            <Link
-              href="/admin/clients"
-              className="inline-flex items-center gap-1.5 rounded-[9px] border border-border bg-white px-[0.95rem] py-2.5 text-[0.85rem] font-semibold shadow-sm transition-colors hover:bg-[#fafbfc]"
-            >
-              <Plus className="size-[15px]" /> New client
-            </Link>
-            <Link
-              href="/jobs/new"
-              className="inline-flex items-center gap-1.5 rounded-[9px] border border-primary bg-primary px-[0.95rem] py-2.5 text-[0.85rem] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-[#0d93a1]"
-            >
-              <Plus className="size-[15px]" /> New job
-            </Link>
+            {can("clients.edit") && (
+              <Link
+                href="/admin/clients"
+                className="inline-flex items-center gap-1.5 rounded-[9px] border border-border bg-white px-[0.95rem] py-2.5 text-[0.85rem] font-semibold shadow-sm transition-colors hover:bg-[#fafbfc]"
+              >
+                <Plus className="size-[15px]" /> New client
+              </Link>
+            )}
+            {can("jobs.edit") && (
+              <Link
+                href="/jobs/new"
+                className="inline-flex items-center gap-1.5 rounded-[9px] border border-primary bg-primary px-[0.95rem] py-2.5 text-[0.85rem] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-[#0d93a1]"
+              >
+                <Plus className="size-[15px]" /> New job
+              </Link>
+            )}
           </div>
         </div>
 

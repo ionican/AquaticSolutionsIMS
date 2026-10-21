@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
-import { requireApiUser } from "@/lib/auth"
+import { getUserRole, requireApiPermission } from "@/lib/auth"
+import { parseRole, type Role } from "@/lib/roles"
 import type { User } from "@supabase/supabase-js"
 
 // Users exist only in Supabase auth — there is no app-level users table.
@@ -11,10 +12,11 @@ interface ManagedUser {
   last_sign_in_at: string | null
   email_confirmed_at: string | null
   invited_at: string | null
+  role: Role | null
 }
 
 // Only the fields the admin UI renders. The full auth user carries identities,
-// app_metadata and tokens that have no business reaching the browser.
+// the rest of app_metadata and tokens that have no business reaching the browser.
 function toManagedUser(user: User): ManagedUser {
   return {
     id: user.id,
@@ -23,14 +25,15 @@ function toManagedUser(user: User): ManagedUser {
     last_sign_in_at: user.last_sign_in_at ?? null,
     email_confirmed_at: user.email_confirmed_at ?? null,
     invited_at: user.invited_at ?? null,
+    role: getUserRole(user),
   }
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function GET() {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("users.manage")
+  if (guard.response) return guard.response
 
   const supabase = createSupabaseAdminClient()
 
@@ -44,8 +47,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("users.manage")
+  if (guard.response) return guard.response
 
   try {
     const supabase = createSupabaseAdminClient()
@@ -58,6 +61,11 @@ export async function POST(req: NextRequest) {
 
     if (!EMAIL_PATTERN.test(email)) {
       return Response.json({ error: "Enter a valid email address" }, { status: 400 })
+    }
+
+    const role = parseRole(body.role)
+    if (!role) {
+      return Response.json({ error: "Choose a role for the new user" }, { status: 400 })
     }
 
     const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
@@ -76,7 +84,20 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: error.message }, { status: 500 })
     }
 
-    return Response.json({ user: toManagedUser(data.user) })
+    // The invite cannot carry app_metadata, so set the role straight after.
+    // Merge rather than replace: app_metadata also holds the auth provider.
+    const { data: updated, error: roleError } = await supabase.auth.admin.updateUserById(
+      data.user.id,
+      { app_metadata: { ...data.user.app_metadata, role } }
+    )
+
+    if (roleError) {
+      // Don't leave an invited account with no role behind; the admin can retry.
+      await supabase.auth.admin.deleteUser(data.user.id)
+      return Response.json({ error: `Could not set the role: ${roleError.message}` }, { status: 500 })
+    }
+
+    return Response.json({ user: toManagedUser(updated.user) })
   } catch (error) {
     console.error("[v0] Error in users API:", error)
     return Response.json(

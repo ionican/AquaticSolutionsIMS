@@ -1,6 +1,7 @@
 "use client"
 
 import { Navigation } from "@/components/navigation"
+import { useRole } from "@/components/role-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,6 +17,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, MapPin, Calendar, PoundSterling, User, Building2, Phone, Mail, FileText, Clock, Pencil, Plus, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { canWriteEventField } from "@/lib/roles"
 
 interface Job {
   id: number
@@ -177,6 +179,12 @@ function DataField({ label, value, icon: Icon }: { label: string; value: React.R
 export default function JobDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const { role, can } = useRole()
+  // Project Managers edit everything but the money fields; Finance edits only
+  // the money fields. The events API enforces the same split.
+  const canEditEvents = can("jobs.edit")
+  const canOpenEvent = canEditEvents || can("events.money.edit")
+  const fieldLocked = (field: keyof EventForm) => !canWriteEventField(role, field)
   const [job, setJob] = useState<Job | null>(null)
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
@@ -225,7 +233,13 @@ export default function JobDetailPage() {
       const res = await fetch(editing ? `/api/events/${editing.id}` : "/api/events", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editing ? form : { ...form, enquiry_id: job.enquiry_id }),
+        // An edit sends only the fields this role may write, so a locked field
+        // can never be the reason a save is refused.
+        body: JSON.stringify(
+          editing
+            ? Object.fromEntries(Object.entries(form).filter(([field]) => !fieldLocked(field as keyof EventForm)))
+            : { ...form, enquiry_id: job.enquiry_id }
+        ),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to save event")
@@ -504,9 +518,11 @@ export default function JobDetailPage() {
             <h2 className="text-sm font-semibold text-card-foreground flex items-center gap-2">
               <Clock className="h-4 w-4" /> Events ({events.length})
             </h2>
-            <Button size="sm" className="h-8 px-2" onClick={openAdd}>
-              <Plus className="h-4 w-4 mr-1" /> Add event
-            </Button>
+            {canEditEvents && (
+              <Button size="sm" className="h-8 px-2" onClick={openAdd}>
+                <Plus className="h-4 w-4 mr-1" /> Add event
+              </Button>
+            )}
           </div>
           {actionError && (
             <div className="mx-4 mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -572,16 +588,20 @@ export default function JobDetailPage() {
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(event)}>
-                            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-                          </Button>
-                          <Button
-                            variant="ghost" size="sm" disabled={rowBusy === event.id}
-                            className="h-7 px-2 text-destructive hover:text-destructive"
-                            onClick={() => { setActionError(null); setPendingDelete(event) }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
-                          </Button>
+                          {canOpenEvent && (
+                            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(event)}>
+                              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                            </Button>
+                          )}
+                          {canEditEvents && (
+                            <Button
+                              variant="ghost" size="sm" disabled={rowBusy === event.id}
+                              className="h-7 px-2 text-destructive hover:text-destructive"
+                              onClick={() => { setActionError(null); setPendingDelete(event) }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -599,64 +619,66 @@ export default function JobDetailPage() {
             <DialogTitle>{editing ? "Edit event" : "Add event"}</DialogTitle>
             <DialogDescription>
               {editing ? "Update this event's details." : "Add a new event to this job."}
+              {!canWriteEventField(role, "invoice_value") && " The value and billable flag are set by Finance."}
+              {!canEditEvents && " Only the value and billable flag can be changed with your role."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3 py-1">
             <div className="grid gap-1.5">
               <Label htmlFor="task_name">Task</Label>
-              <Input id="task_name" value={form.task_name}
+              <Input id="task_name" disabled={fieldLocked("task_name")} value={form.task_name}
                 onChange={e => setForm(f => ({ ...f, task_name: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="date">Date</Label>
-                <Input id="date" type="date" value={form.date}
+                <Input id="date" disabled={fieldLocked("date")} type="date" value={form.date}
                   onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="start_date">Start date</Label>
-                <Input id="start_date" type="date" value={form.start_date}
+                <Input id="start_date" disabled={fieldLocked("start_date")} type="date" value={form.start_date}
                   onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="eventtype">Type</Label>
-                <Input id="eventtype" value={form.eventtype}
+                <Input id="eventtype" disabled={fieldLocked("eventtype")} value={form.eventtype}
                   onChange={e => setForm(f => ({ ...f, eventtype: e.target.value }))} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="resource">Resource</Label>
-                <Input id="resource" value={form.resource}
+                <Input id="resource" disabled={fieldLocked("resource")} value={form.resource}
                   onChange={e => setForm(f => ({ ...f, resource: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="man_days">Days</Label>
-                <Input id="man_days" type="number" step="any" value={form.man_days}
+                <Input id="man_days" disabled={fieldLocked("man_days")} type="number" step="any" value={form.man_days}
                   onChange={e => setForm(f => ({ ...f, man_days: e.target.value }))} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="invoice_value">Value (£)</Label>
-                <Input id="invoice_value" type="number" step="any" value={form.invoice_value}
+                <Input id="invoice_value" disabled={fieldLocked("invoice_value")} type="number" step="any" value={form.invoice_value}
                   onChange={e => setForm(f => ({ ...f, invoice_value: e.target.value }))} />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
               <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-                <Checkbox checked={form.invoicable}
+                <Checkbox checked={form.invoicable} disabled={fieldLocked("invoicable")}
                   onCheckedChange={v => setForm(f => ({ ...f, invoicable: v === true }))} />
                 Billable
               </label>
               <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-                <Checkbox checked={form.completed}
+                <Checkbox checked={form.completed} disabled={fieldLocked("completed")}
                   onCheckedChange={v => setForm(f => ({ ...f, completed: v === true }))} />
                 Completed
               </label>
               <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
-                <Checkbox checked={form.warranty}
+                <Checkbox checked={form.warranty} disabled={fieldLocked("warranty")}
                   onCheckedChange={v => setForm(f => ({ ...f, warranty: v === true }))} />
                 Warranty
               </label>

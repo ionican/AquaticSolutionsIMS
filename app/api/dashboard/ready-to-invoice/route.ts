@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
 
 // "Ready to invoice" = a won (Contracted) job whose end date has arrived
 // (contract_end is today or earlier). Scoped to Strettons (company_id = 6).
@@ -8,8 +8,8 @@ const COMPANY_ID = 6
 const DISPLAY_LIMIT = 50
 
 export async function GET() {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("dashboard.view")
+  if (guard.response) return guard.response
 
   try {
     const supabase = createSupabaseAdminClient()

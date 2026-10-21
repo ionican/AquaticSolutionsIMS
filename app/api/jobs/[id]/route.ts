@@ -1,6 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { NextRequest } from "next/server"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
 
 interface JobContactInput {
   contact_id?: string | number | null
@@ -35,8 +35,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("jobs.view")
+  if (guard.response) return guard.response
 
   const supabase = createSupabaseAdminClient()
   const { id } = await params
@@ -124,8 +124,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("jobs.edit")
+  if (guard.response) return guard.response
 
   const supabase = createSupabaseAdminClient()
   const { id } = await params

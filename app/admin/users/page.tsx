@@ -1,9 +1,13 @@
 "use client"
 
 import { Navigation } from "@/components/navigation"
+import { useRole } from "@/components/role-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
@@ -14,7 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Search, X, Plus, Trash2, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
+import { ROLES, ROLE_LABELS, parseRole, roleLabel, type Role } from "@/lib/roles"
 import Link from "next/link"
 
 interface ManagedUser {
@@ -24,6 +28,7 @@ interface ManagedUser {
   last_sign_in_at: string | null
   email_confirmed_at: string | null
   invited_at: string | null
+  role: Role | null
 }
 
 function formatDate(value: string | null) {
@@ -50,10 +55,13 @@ export default function ManageUsersPage() {
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  // Used only to disable the controls on your own row; the API guards are the
+  // actual protection.
+  const { userId: currentUserId } = useRole()
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [email, setEmail] = useState("")
+  const [newRole, setNewRole] = useState<Role | "">("")
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -78,15 +86,6 @@ export default function ManageUsersPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Used only to disable the delete button on your own row; the API guard is
-  // the actual protection.
-  useEffect(() => {
-    createSupabaseBrowserClient()
-      .auth.getUser()
-      .then(({ data }) => setCurrentUserId(data.user?.id ?? null))
-      .catch(() => setCurrentUserId(null))
-  }, [])
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return users
@@ -97,6 +96,7 @@ export default function ManageUsersPage() {
 
   function openAdd() {
     setEmail("")
+    setNewRole("")
     setFormError(null)
     setDialogOpen(true)
   }
@@ -104,13 +104,14 @@ export default function ManageUsersPage() {
   async function inviteUser() {
     const trimmed = email.trim()
     if (!trimmed) { setFormError("Enter an email address"); return }
+    if (!newRole) { setFormError("Choose a role"); return }
     setSaving(true)
     setFormError(null)
     try {
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({ email: trimmed, role: newRole }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to invite user")
@@ -121,6 +122,28 @@ export default function ManageUsersPage() {
       setFormError(err instanceof Error ? err.message : "Failed to invite user")
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function changeRole(target: ManagedUser, role: Role) {
+    if (role === target.role) return
+    setRowBusy(target.id)
+    setNotice(null)
+    setLoadError(null)
+    try {
+      const res = await fetch(`/api/users/${target.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to change role")
+      setNotice(`${target.email || "The account"} is now ${ROLE_LABELS[role]}. It applies from their next page load.`)
+      await load()
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to change role")
+    } finally {
+      setRowBusy(null)
     }
   }
 
@@ -200,6 +223,7 @@ export default function ManageUsersPage() {
             <thead>
               <tr className="bg-muted/60 border-b border-border">
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Email</th>
+                <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Role</th>
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Created</th>
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Last sign-in</th>
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Status</th>
@@ -208,9 +232,9 @@ export default function ManageUsersPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="px-3 py-10 text-center text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-10 text-center text-muted-foreground">No users found</td></tr>
+                <tr><td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">No users found</td></tr>
               ) : (
                 filtered.map((u, i) => {
                   const status = statusOf(u)
@@ -227,6 +251,26 @@ export default function ManageUsersPage() {
                       <td className="px-3 py-2 font-medium text-foreground max-w-[320px] truncate" title={u.email ?? ""}>
                         {u.email || <span className="italic text-muted-foreground">No email</span>}
                         {isSelf && <span className="ml-2 text-xs font-normal text-muted-foreground">(you)</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        {isSelf ? (
+                          <span className="text-foreground" title="You cannot change your own role">{roleLabel(u.role)}</span>
+                        ) : (
+                          <Select
+                            value={u.role ?? ""}
+                            disabled={busy}
+                            onValueChange={v => { const role = parseRole(v); if (role) changeRole(u, role) }}
+                          >
+                            <SelectTrigger className="h-8 w-44 text-sm" aria-label={`Role for ${u.email ?? "user"}`}>
+                              <SelectValue placeholder="No role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLES.map(r => (
+                                <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{formatDate(u.created_at)}</td>
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
@@ -267,7 +311,7 @@ export default function ManageUsersPage() {
             <DialogTitle>Add user</DialogTitle>
             <DialogDescription>
               An invitation email will be sent to this address. The user sets their own
-              password from the link, then has the same access as everyone else.
+              password from the link, then has the access their role allows.
             </DialogDescription>
           </DialogHeader>
 
@@ -278,6 +322,19 @@ export default function ManageUsersPage() {
                 id="email" type="email" value={email} autoComplete="off"
                 onChange={e => setEmail(e.target.value)}
               />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="role">Role *</Label>
+              <Select value={newRole} onValueChange={v => setNewRole(parseRole(v) ?? "")}>
+                <SelectTrigger id="role" className="w-full">
+                  <SelectValue placeholder="Choose a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map(r => (
+                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
