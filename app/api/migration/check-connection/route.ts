@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { azureSqlVia, connectAzureSql } from "@/lib/azure-sql"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
 
 async function getServerIp() {
   try {
@@ -13,8 +13,8 @@ async function getServerIp() {
 }
 
 export async function GET() {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("system.admin")
+  if (guard.response) return guard.response
 
   const server = process.env.AZURE_SQL_SERVER
   const database = process.env.AZURE_SQL_DATABASE
