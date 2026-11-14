@@ -1,9 +1,9 @@
 import { createSupabaseAnonClient } from "@/lib/supabase-server"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
 
 export async function GET(request: Request) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("system.admin")
+  if (guard.response) return guard.response
 
   try {
     const supabase = createSupabaseAnonClient()
@@ -30,8 +30,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("system.admin")
+  if (guard.response) return guard.response
 
   try {
     const supabase = createSupabaseAnonClient()

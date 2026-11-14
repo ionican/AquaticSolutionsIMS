@@ -1,6 +1,7 @@
 "use client"
 
 import { Navigation } from "@/components/navigation"
+import { useRole } from "@/components/role-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -89,6 +90,7 @@ function SortIcon({ col, sortBy, sortDir }: { col: string; sortBy: string; sortD
 
 export default function JobsPage() {
   const router = useRouter()
+  const canEditJobs = useRole().can("jobs.edit")
   const [jobs, setJobs] = useState<Job[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -308,8 +310,9 @@ export default function JobsPage() {
                     <tr
                       key={job.id}
                       onClick={() => {
+                        // Incomplete jobs open in the edit form, for roles that can edit.
                         const isIncomplete = !job.clients?.business_name || !job.project_name || !job.site
-                        router.push(isIncomplete ? `/jobs/new?id=${job.id}` : `/jobs/${job.id}`)
+                        router.push(isIncomplete && canEditJobs ? `/jobs/new?id=${job.id}` : `/jobs/${job.id}`)
                       }}
                       className={cn(
                         "border-b border-border last:border-0 hover:bg-muted/40 transition-colors cursor-pointer",

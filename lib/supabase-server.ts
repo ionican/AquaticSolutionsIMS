@@ -13,7 +13,10 @@ function requireEnv(name: string) {
 export function createSupabaseAdminClient() {
   return createClient(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("SUPABASE_SERVICE_ROLE_KEY")
+    requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    // Server-side use of the admin API: there is no session to keep alive, and
+    // a background refresh timer would leak across requests.
+    { auth: { autoRefreshToken: false, persistSession: false } }
   )
 }
 

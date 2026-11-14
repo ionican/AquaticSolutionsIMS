@@ -1,14 +1,17 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { coerceEventFields } from "@/lib/event-fields"
 import { NextRequest } from "next/server"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
+import { canWriteEventField, checkEventUpdate } from "@/lib/roles"
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  // Finance edits only the money fields and a Project Manager only the rest;
+  // checkEventUpdate below enforces the split against the stored row.
+  const guard = await requireApiPermission("jobs.edit", "events.money.edit")
+  if (guard.response) return guard.response
 
   const supabase = createSupabaseAdminClient()
   const { id } = await params
@@ -27,6 +30,35 @@ export async function PATCH(
   const updateData = coerced.data
   if (Object.keys(updateData).length === 0) {
     return Response.json({ error: "No changes provided" }, { status: 400 })
+  }
+
+  // Compare against the stored row rather than the request alone: the edit
+  // form sends every field back, unchanged ones included.
+  const { data: stored, error: storedError } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", eventId)
+    .eq("company_id", 6)
+    .maybeSingle()
+
+  if (storedError) {
+    return Response.json({ error: storedError.message }, { status: 500 })
+  }
+
+  if (!stored) {
+    return Response.json({ error: "Event not found" }, { status: 404 })
+  }
+
+  const allowed = checkEventUpdate(guard.role, updateData, stored)
+  if (!allowed.ok) {
+    return Response.json({ error: allowed.error }, { status: 403 })
+  }
+
+  // Fields this role may not write were only echoed back unchanged. Leave them
+  // out of the update so a concurrent edit by a role that may write them is
+  // not reverted to the value this form loaded.
+  for (const field of Object.keys(updateData)) {
+    if (!canWriteEventField(guard.role, field)) delete updateData[field]
   }
 
   updateData.updateddateutc = new Date().toISOString()
@@ -59,8 +91,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("jobs.edit")
+  if (guard.response) return guard.response
 
   const supabase = createSupabaseAdminClient()
   const { id } = await params

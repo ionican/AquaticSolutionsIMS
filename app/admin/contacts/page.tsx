@@ -1,6 +1,7 @@
 "use client"
 
 import { Navigation } from "@/components/navigation"
+import { useRole } from "@/components/role-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -109,6 +110,8 @@ function ClientCombobox({
 }
 
 export default function ManageContactsPage() {
+  // Finance sees the list read-only; the API refuses their writes regardless.
+  const canEdit = useRole().can("clients.edit")
   const [contacts, setContacts] = useState<Contact[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -298,9 +301,11 @@ export default function ManageContactsPage() {
               {loading ? "Loading…" : `${total.toLocaleString()} ${statusFilter === "all" ? "" : statusFilter + " "}contact${total === 1 ? "" : "s"}`}
             </p>
           </div>
-          <Button onClick={openAdd} className="h-9">
-            <Plus className="h-4 w-4 mr-1" /> Add contact
-          </Button>
+          {canEdit && (
+            <Button onClick={openAdd} className="h-9">
+              <Plus className="h-4 w-4 mr-1" /> Add contact
+            </Button>
+          )}
         </div>
 
         {loadError && (
@@ -347,7 +352,7 @@ export default function ManageContactsPage() {
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Phone</th>
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Client</th>
                 <th className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">Status</th>
-                <th className="px-3 py-2 text-right font-semibold text-muted-foreground whitespace-nowrap">Actions</th>
+                <th className="px-3 py-2 text-right font-semibold text-muted-foreground whitespace-nowrap">{canEdit ? "Actions" : ""}</th>
               </tr>
             </thead>
             <tbody>
@@ -388,24 +393,26 @@ export default function ManageContactsPage() {
                         </span>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => openEdit(c)}>
-                            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-                          </Button>
-                          {active ? (
-                            <Button
-                              variant="ghost" size="sm" disabled={busy}
-                              className="h-8 px-2 text-destructive hover:text-destructive"
-                              onClick={() => setPendingDelete(c)}
-                            >
-                              <Ban className="h-3.5 w-3.5 mr-1" /> Deactivate
+                        {canEdit && (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => openEdit(c)}>
+                              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
                             </Button>
-                          ) : (
-                            <Button variant="ghost" size="sm" disabled={busy} className="h-8 px-2" onClick={() => reactivate(c)}>
-                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reactivate
-                            </Button>
-                          )}
-                        </div>
+                            {active ? (
+                              <Button
+                                variant="ghost" size="sm" disabled={busy}
+                                className="h-8 px-2 text-destructive hover:text-destructive"
+                                onClick={() => setPendingDelete(c)}
+                              >
+                                <Ban className="h-3.5 w-3.5 mr-1" /> Deactivate
+                              </Button>
+                            ) : (
+                              <Button variant="ghost" size="sm" disabled={busy} className="h-8 px-2" onClick={() => reactivate(c)}>
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reactivate
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )

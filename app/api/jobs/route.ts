@@ -1,10 +1,10 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest } from "next/server"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
 
 export async function GET(req: NextRequest) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("jobs.view")
+  if (guard.response) return guard.response
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

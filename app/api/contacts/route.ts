@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { fetchAllPages } from "@/lib/supabase-pagination"
 import { NextRequest } from "next/server"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
 
 // This app only ever handles Aquatic Solutions (Strettons) data.
 const COMPANY_ID = 6
@@ -19,8 +19,8 @@ interface Contact {
 }
 
 export async function GET(req: NextRequest) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("clients.view")
+  if (guard.response) return guard.response
 
   const supabase = createSupabaseAdminClient()
 
@@ -76,8 +76,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("clients.edit")
+  if (guard.response) return guard.response
 
   try {
     const supabase = createSupabaseAdminClient()

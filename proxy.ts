@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { roleFromAppMetadata } from "./lib/roles"
 
 // Default deny: everything requires a Supabase session except the login page
 // and static assets. New routes are protected without opt-in.
@@ -64,6 +65,23 @@ export default async function proxy(request: NextRequest) {
       loginUrl.searchParams.set("redirect", target)
     }
     return NextResponse.redirect(loginUrl)
+  }
+
+  // Signed in but no recognised role: nothing is permitted, so stop here.
+  // Route handlers and page layouts check permissions again themselves.
+  if (!roleFromAppMetadata(user.app_metadata)) {
+    if (pathname.startsWith("/api/")) {
+      // build-info and get-ip are role-free; the build stamp on the no-role
+      // page still calls build-info.
+      if (pathname === "/api/build-info" || pathname === "/api/get-ip") return response
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    if (pathname !== "/no-role") {
+      const noRoleUrl = request.nextUrl.clone()
+      noRoleUrl.pathname = "/no-role"
+      noRoleUrl.search = ""
+      return NextResponse.redirect(noRoleUrl)
+    }
   }
 
   return response

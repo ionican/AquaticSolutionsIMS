@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { azureSqlVia, connectAzureSql } from "@/lib/azure-sql"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
 
 interface TableConfig {
   name: string
@@ -64,8 +64,8 @@ function companyScopeSql(
 }
 
 export async function POST(request: Request) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("system.admin")
+  if (guard.response) return guard.response
 
   const server = process.env.AZURE_SQL_SERVER
   const database = process.env.AZURE_SQL_DATABASE

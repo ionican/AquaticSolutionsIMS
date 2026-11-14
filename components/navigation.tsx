@@ -3,11 +3,12 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
-import { LogOut, Search } from "lucide-react"
+import { Search } from "lucide-react"
 import { BuildStamp } from "@/components/build-stamp"
+import { useRole } from "@/components/role-provider"
+import { SignOutButton } from "@/components/sign-out-button"
 import { cn } from "@/lib/utils"
-import { createSupabaseBrowserClient } from "@/lib/supabase-browser"
-import { Button } from "@/components/ui/button"
+import { roleLabel } from "@/lib/roles"
 
 const navItems = [
   { href: "/", label: "Home" },
@@ -21,6 +22,7 @@ export function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [query, setQuery] = useState("")
+  const { role } = useRole()
 
   // Pick the single best-matching nav item (longest matching href wins,
   // so /admin/clients beats /admin when you're on the Clients page).
@@ -33,13 +35,6 @@ export function Navigation() {
     // For now the search box jumps to the Jobs list; wiring the term through
     // to the jobs filters comes in a later step.
     router.push("/jobs")
-  }
-
-  async function handleSignOut() {
-    const supabase = createSupabaseBrowserClient()
-    await supabase.auth.signOut()
-    router.replace("/login")
-    router.refresh()
   }
 
   return (
@@ -96,22 +91,16 @@ export function Navigation() {
 
           {/* User pill */}
           <div className="flex shrink-0 items-center gap-2.5 rounded-full border border-border py-1 pl-3 pr-1">
-            <span className="text-[0.65rem] font-bold tracking-[0.1em] text-muted-foreground">MANAGER</span>
+            <span className="text-[0.65rem] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+              {roleLabel(role)}
+            </span>
             <span className="grid size-[30px] place-items-center rounded-full bg-primary text-[0.72rem] font-bold text-white">
               TS
             </span>
           </div>
           <div className="flex items-center gap-2">
             <BuildStamp />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSignOut}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <LogOut className="size-4" />
-              <span className="hidden sm:inline">Sign out</span>
-            </Button>
+            <SignOutButton className="text-muted-foreground hover:text-foreground" />
           </div>
         </nav>
       </div>

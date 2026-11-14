@@ -1,11 +1,12 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-server"
 import { coerceEventFields } from "@/lib/event-fields"
 import { NextRequest } from "next/server"
-import { requireApiUser } from "@/lib/auth"
+import { requireApiPermission } from "@/lib/auth"
+import { checkEventCreate } from "@/lib/roles"
 
 export async function POST(req: NextRequest) {
-  const unauthorized = await requireApiUser()
-  if (unauthorized) return unauthorized
+  const guard = await requireApiPermission("jobs.edit")
+  if (guard.response) return guard.response
 
   const supabase = createSupabaseAdminClient()
   const body = await req.json()
@@ -33,6 +34,13 @@ export async function POST(req: NextRequest) {
   const coerced = coerceEventFields(body, { requireAll: true })
   if ("error" in coerced) {
     return Response.json({ error: coerced.error }, { status: 400 })
+  }
+
+  // A Project Manager may create events but not price them. Rejected rather
+  // than stripped, so nobody believes a value was saved when it was not.
+  const allowed = checkEventCreate(guard.role, coerced.data)
+  if (!allowed.ok) {
+    return Response.json({ error: allowed.error }, { status: 403 })
   }
 
   // `events.id` has no DB sequence and mirrors `task_id` for every existing row;

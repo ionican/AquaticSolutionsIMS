@@ -17,6 +17,8 @@ import { useParams } from "next/navigation"
 import Link from "next/link"
 import { Printer, Plus, Pencil, Trash2, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useRole } from "@/components/role-provider"
+import { canWriteEventField } from "@/lib/roles"
 
 interface Job {
   id: number
@@ -207,6 +209,11 @@ const thBase = "px-3 py-2.5 text-left text-[0.64rem] font-bold uppercase trackin
 
 export default function JobDetailPage() {
   const params = useParams()
+  const { role, can } = useRole()
+  const canEditJobs = can("jobs.edit")       // description, dates, days, Done, add, delete
+  const canEditMoney = can("events.money.edit") // the invoice value
+  const canEditEvents = canEditJobs || canEditMoney
+  const fieldLocked = (field: keyof EventForm) => !canWriteEventField(role, field)
   const [job, setJob] = useState<Job | null>(null)
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
@@ -471,9 +478,11 @@ export default function JobDetailPage() {
           <Panel
             title="Project plan · the central work list"
             action={
-              <button onClick={openAdd} className="inline-flex items-center gap-1 text-[0.74rem] font-semibold text-[#0d93a1] hover:underline">
-                <Plus className="size-3.5" /> Add line
-              </button>
+              canEditJobs ? (
+                <button onClick={openAdd} className="inline-flex items-center gap-1 text-[0.74rem] font-semibold text-[#0d93a1] hover:underline">
+                  <Plus className="size-3.5" /> Add line
+                </button>
+              ) : undefined
             }
           >
             <div className="border-b border-border px-[1.05rem] py-2 text-[0.78rem] text-muted-foreground">
@@ -502,17 +511,29 @@ export default function JobDetailPage() {
                     events.map(event => (
                       <tr key={event.task_id} className="border-b border-[#eef1f3] last:border-0 hover:bg-[#f7fbfc]">
                         <td className="px-3 py-2 text-center">
-                          <button
-                            onClick={() => toggleDone(event)}
-                            disabled={rowBusy === event.id}
-                            title={event.completed ? "Marked done — click to undo" : "Mark done"}
-                            className={cn(
-                              "grid size-[18px] place-items-center rounded-[5px] border transition-colors",
-                              event.completed ? "border-primary bg-primary text-white" : "border-border bg-white hover:border-primary"
-                            )}
-                          >
-                            {event.completed && <Check className="size-3" />}
-                          </button>
+                          {canEditJobs ? (
+                            <button
+                              onClick={() => toggleDone(event)}
+                              disabled={rowBusy === event.id}
+                              title={event.completed ? "Marked done — click to undo" : "Mark done"}
+                              className={cn(
+                                "grid size-[18px] place-items-center rounded-[5px] border transition-colors",
+                                event.completed ? "border-primary bg-primary text-white" : "border-border bg-white hover:border-primary"
+                              )}
+                            >
+                              {event.completed && <Check className="size-3" />}
+                            </button>
+                          ) : (
+                            <span
+                              title={event.completed ? "Done" : "Not done"}
+                              className={cn(
+                                "inline-grid size-[18px] place-items-center rounded-[5px] border",
+                                event.completed ? "border-primary bg-primary text-white" : "border-border bg-white"
+                              )}
+                            >
+                              {event.completed && <Check className="size-3" />}
+                            </span>
+                          )}
                         </td>
                         <td className="max-w-[280px] px-3 py-2 text-foreground">
                           <div className="truncate" title={event.task_name}>{event.task_name || <span className="italic text-muted-foreground">Untitled line</span>}</div>
@@ -531,16 +552,21 @@ export default function JobDetailPage() {
                         <td className="px-3 py-2 text-center"><Tick on={event.print} /></td>
                         <td className="whitespace-nowrap px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => openEdit(event)} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[0.74rem] font-semibold text-[#0d93a1] hover:bg-[#e0f3f5]">
-                              <Pencil className="size-3.5" /> Edit
-                            </button>
-                            <button
-                              onClick={() => { setActionError(null); setPendingDelete(event) }}
-                              disabled={rowBusy === event.id}
-                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[0.74rem] font-semibold text-destructive hover:bg-[#fdecec]"
-                            >
-                              <Trash2 className="size-3.5" /> Delete
-                            </button>
+                            {canEditEvents && (
+                              <button onClick={() => openEdit(event)} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[0.74rem] font-semibold text-[#0d93a1] hover:bg-[#e0f3f5]">
+                                <Pencil className="size-3.5" /> Edit
+                              </button>
+                            )}
+                            {canEditJobs && (
+                              <button
+                                onClick={() => { setActionError(null); setPendingDelete(event) }}
+                                disabled={rowBusy === event.id}
+                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[0.74rem] font-semibold text-destructive hover:bg-[#fdecec]"
+                              >
+                                <Trash2 className="size-3.5" /> Delete
+                              </button>
+                            )}
+                            {!canEditEvents && <span className="text-muted-foreground/40">—</span>}
                           </div>
                         </td>
                       </tr>
@@ -673,33 +699,35 @@ export default function JobDetailPage() {
           <div className="grid gap-3 py-1">
             <div className="grid gap-1.5">
               <Label htmlFor="task_name">Description</Label>
-              <Input id="task_name" value={form.task_name} onChange={e => setForm(f => ({ ...f, task_name: e.target.value }))} />
+              <Input id="task_name" disabled={fieldLocked("task_name")} value={form.task_name} onChange={e => setForm(f => ({ ...f, task_name: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="start_date">Start</Label>
-                <Input id="start_date" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+                <Input id="start_date" disabled={fieldLocked("start_date")} type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="date">Finish</Label>
-                <Input id="date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+                <Input id="date" disabled={fieldLocked("date")} type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="man_days">Days</Label>
-                <Input id="man_days" type="number" step="any" value={form.man_days} onChange={e => setForm(f => ({ ...f, man_days: e.target.value }))} />
+                <Input id="man_days" disabled={fieldLocked("man_days")} type="number" step="any" value={form.man_days} onChange={e => setForm(f => ({ ...f, man_days: e.target.value }))} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="invoice_value">Value (£)</Label>
-                <Input id="invoice_value" type="number" step="any" value={form.invoice_value} onChange={e => setForm(f => ({ ...f, invoice_value: e.target.value }))} />
+                <Input id="invoice_value" disabled={fieldLocked("invoice_value")} type="number" step="any" value={form.invoice_value} onChange={e => setForm(f => ({ ...f, invoice_value: e.target.value }))} />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                <Checkbox checked={form.completed} onCheckedChange={v => setForm(f => ({ ...f, completed: v === true }))} /> Done
+              <label className={cn("flex items-center gap-2 text-sm text-foreground", fieldLocked("completed") ? "opacity-60" : "cursor-pointer")}>
+                <Checkbox checked={form.completed} disabled={fieldLocked("completed")} onCheckedChange={v => setForm(f => ({ ...f, completed: v === true }))} /> Done
               </label>
             </div>
+            {!canEditMoney && <p className="text-[0.75rem] text-muted-foreground">The value is set by Finance.</p>}
+            {!canEditJobs && <p className="text-[0.75rem] text-muted-foreground">With your role, only the value can be changed.</p>}
           </div>
           {formError && <p className="text-sm text-destructive">{formError}</p>}
           <DialogFooter>

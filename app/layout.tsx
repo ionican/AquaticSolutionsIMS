@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import { RoleProvider } from '@/components/role-provider'
+import { getAuthenticatedUser, getUserRole } from '@/lib/auth'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -29,15 +31,21 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // Role for hiding controls in client components. Null on the login and
+  // invite pages, where nobody is signed in yet.
+  const user = await getAuthenticatedUser()
+
   return (
     <html lang="en" className="bg-background">
       <body className="font-sans antialiased">
-        {children}
+        <RoleProvider userId={user?.id ?? null} role={getUserRole(user)}>
+          {children}
+        </RoleProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
