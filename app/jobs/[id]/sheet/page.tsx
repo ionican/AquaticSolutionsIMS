@@ -55,12 +55,6 @@ function contactName(jc: JobContact) {
   return [c.title, c.fname, c.sname].filter(Boolean).join(" ") || "Contact"
 }
 
-// Company details that print in the header. Placeholder values — update these
-// to Strettons' real address / phone / email.
-const COMPANY = {
-  lines: ["Unit 1, Riverside Court, Warwickshire", "01926 000 000 · office@aquatic-solutions.co.uk"],
-}
-
 export default function JobSheetPage() {
   const params = useParams()
   const [job, setJob] = useState<Job | null>(null)
@@ -145,9 +139,6 @@ export default function JobSheetPage() {
                 <small className="mt-0.5 block text-[0.58rem] font-semibold not-italic tracking-[0.16em] text-muted-foreground/70">UK</small>
               </span>
             </div>
-            <div className="text-right text-[0.72rem] leading-relaxed text-muted-foreground">
-              {COMPANY.lines.map((l, i) => <div key={i}>{l}</div>)}
-            </div>
           </div>
           <div className="mb-6 h-[3px] rounded bg-primary" />
 
@@ -178,11 +169,9 @@ export default function JobSheetPage() {
           </div>
 
           {/* Roles grid */}
-          <div className="mb-4 grid grid-cols-4 gap-4 rounded-lg border border-[#e3e6e9] px-4 py-3.5">
+          <div className="mb-4 grid grid-cols-2 gap-4 rounded-lg border border-[#e3e6e9] px-4 py-3.5">
             {[
-              ["Salesperson", "—"],
               ["Contract Manager", "—"],
-              ["Operator", job.operative || "—"],
               ["Job Type", job.job_type?.job_type || "—"],
             ].map(([label, value]) => (
               <div key={label}>
@@ -229,7 +218,6 @@ export default function JobSheetPage() {
             <table className="w-full overflow-hidden rounded-lg border border-[#e3e6e9] text-[0.84rem]">
               <thead>
                 <tr className="bg-[#fafbfc]">
-                  <th className="border-b border-[#e3e6e9] px-3 py-2 text-left text-[0.62rem] font-bold uppercase tracking-wide text-muted-foreground">Description</th>
                   <th className="border-b border-[#e3e6e9] px-3 py-2 text-left text-[0.62rem] font-bold uppercase tracking-wide text-muted-foreground">Start</th>
                   <th className="border-b border-[#e3e6e9] px-3 py-2 text-left text-[0.62rem] font-bold uppercase tracking-wide text-muted-foreground">Finish</th>
                   <th className="border-b border-[#e3e6e9] px-3 py-2 text-right text-[0.62rem] font-bold uppercase tracking-wide text-muted-foreground">Days</th>
@@ -237,11 +225,10 @@ export default function JobSheetPage() {
               </thead>
               <tbody>
                 {scheduleLines.length === 0 ? (
-                  <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No scheduled work lines</td></tr>
+                  <tr><td colSpan={3} className="px-3 py-4 text-center text-muted-foreground">No scheduled work lines</td></tr>
                 ) : (
                   scheduleLines.map((e) => (
                     <tr key={e.task_id} className="border-b border-[#f0f2f4] last:border-0">
-                      <td className="px-3 py-2 text-[#41525e]">{e.task_name || "—"}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-[#41525e]">{fmtDate(e.start_date)}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-[#41525e]">{fmtDate(e.date)}</td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums">{e.man_days ?? "—"}</td>
