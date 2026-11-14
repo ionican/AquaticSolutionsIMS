@@ -391,12 +391,12 @@ export default function JobDetailPage() {
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <button
-              onClick={() => flash("Print job sheet — the job sheet screen is coming next")}
+            <Link
+              href={`/jobs/${job.id}/sheet`}
               className="inline-flex items-center gap-1.5 rounded-[9px] border border-border bg-white px-[0.85rem] py-2 text-[0.83rem] font-semibold shadow-sm transition-colors hover:bg-[#fafbfc]"
             >
               <Printer className="size-[15px]" /> Print job sheet
-            </button>
+            </Link>
           </div>
         </div>
 
